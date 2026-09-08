@@ -12,12 +12,17 @@
  */
 import {
   CommandId,
+  DEFAULT_MODEL,
+  DEFAULT_PROVIDER_INTERACTION_MODE,
+  DEFAULT_RUNTIME_MODE,
   MessageId,
+  ProviderInstanceId,
   ThreadId,
   type AutomationGitHubIssueEvent,
   type AutomationGitHubIssueTrigger,
   type AutomationGitHubPrEvent,
   type AutomationGitHubPrTrigger,
+  type ModelSelection,
   type OrchestrationProjectShell,
   type T3ProjectFile,
   type T3ProjectFileAutomation,
@@ -101,15 +106,21 @@ export const make = Effect.gen(function* () {
       const messageId = MessageId.make(msgUuid);
       const nowIso = new Date().toISOString();
 
+      const modelSelection: ModelSelection = action.modelSelection ??
+        project.defaultModelSelection ?? {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: DEFAULT_MODEL,
+        };
+
       yield* engine.dispatch({
         type: "thread.create",
         commandId: createCommandId,
         threadId,
         projectId: project.id,
         title: renderedTitle,
-        modelSelection: action.modelSelection ?? { provider: "codex" },
-        runtimeMode: action.runtimeMode ?? "full-access",
-        interactionMode: "chat",
+        modelSelection,
+        runtimeMode: action.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         branch: null,
         worktreePath: null,
         createdAt: nowIso,
