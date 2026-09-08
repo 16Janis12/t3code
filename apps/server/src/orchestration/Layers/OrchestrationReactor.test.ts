@@ -11,6 +11,7 @@ import { ProviderRuntimeIngestionService } from "../Services/ProviderRuntimeInge
 import { ThreadDeletionReactor } from "../Services/ThreadDeletionReactor.ts";
 import * as ThreadSettlementReactor from "../ThreadSettlementReactor.ts";
 import * as ThreadPullRequestReactor from "../ThreadPullRequestReactor.ts";
+import * as AutomationReactor from "../AutomationReactor.ts";
 import { OrchestrationReactor } from "../Services/OrchestrationReactor.ts";
 import { makeOrchestrationReactor } from "./OrchestrationReactor.ts";
 import * as AgentAwarenessRelay from "../../relay/AgentAwarenessRelay.ts";
@@ -85,6 +86,16 @@ describe("OrchestrationReactor", () => {
           }),
         ),
         Layer.provideMerge(
+          Layer.succeed(AutomationReactor.AutomationReactor, {
+            start: () => {
+              started.push("automation-reactor");
+              return Effect.void;
+            },
+            drain: Effect.void,
+            pollOnce: () => Effect.void,
+          }),
+        ),
+        Layer.provideMerge(
           Layer.succeed(AgentAwarenessRelay.AgentAwarenessRelay, {
             publishThread: () => Effect.void,
             start: () => {
@@ -98,8 +109,9 @@ describe("OrchestrationReactor", () => {
 
     const reactor = await runtime!.runPromise(Effect.service(OrchestrationReactor));
     const scope = await Effect.runPromise(Scope.make("sequential"));
-    await Effect.runPromise(reactor.start().pipe(Scope.provide(scope)));
+    const exit = await Effect.runPromiseExit(Scope.provide(reactor.start(), scope));
 
+    expect(Exit.isSuccess(exit)).toBe(true);
     expect(started).toEqual([
       "provider-runtime-ingestion",
       "provider-command-reactor",
@@ -107,9 +119,8 @@ describe("OrchestrationReactor", () => {
       "thread-deletion-reactor",
       "thread-pull-request-reactor",
       "thread-settlement-reactor",
+      "automation-reactor",
       "agent-awareness-relay",
     ]);
-
-    await Effect.runPromise(Scope.close(scope, Exit.void));
   });
 });

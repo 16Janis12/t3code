@@ -48,6 +48,7 @@ import {
 } from "../../hooks/useSettings";
 import { useT3ProjectFileState } from "../../hooks/useT3ProjectFileScripts";
 import { ProjectActionsList } from "./ProjectActionsList";
+import { ProjectAutomationsSection } from "./ProjectAutomationsSection";
 import { isElectron } from "../../env";
 import {
   decodeProjectScriptKeybindingRule,
@@ -1413,6 +1414,12 @@ function ProjectDetail({
               className="text-warning"
             />
           ) : null}
+          <ProjectAutomationsSection
+            environmentId={selectedCheckout.environmentId}
+            workspaceRoot={selectedCheckout.workspaceRoot}
+            t3File={t3File}
+            disabled={isSavingScripts}
+          />
         </SettingsSection>
 
         <SettingsSection title="Danger">

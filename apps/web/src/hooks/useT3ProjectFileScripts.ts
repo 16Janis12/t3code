@@ -2,6 +2,7 @@ import {
   T3_PROJECT_FILE_NAME,
   type EnvironmentId,
   type T3ProjectFile,
+  type T3ProjectFileAutomation,
   type T3ProjectFileScript,
 } from "@t3tools/contracts";
 import { parseT3ProjectFile } from "@t3tools/shared/t3ProjectFile";
@@ -10,6 +11,7 @@ import { useMemo } from "react";
 import { useProjectFileQuery } from "~/components/files/projectFilesQueryState";
 
 const NO_SCRIPTS: ReadonlyArray<T3ProjectFileScript> = [];
+const NO_AUTOMATIONS: ReadonlyArray<T3ProjectFileAutomation> = [];
 
 export interface T3ProjectFileState {
   /**
@@ -23,6 +25,8 @@ export interface T3ProjectFileState {
   /** The decoded file when status is `valid`, null otherwise. */
   file: T3ProjectFile | null;
   scripts: ReadonlyArray<T3ProjectFileScript>;
+  automations: ReadonlyArray<T3ProjectFileAutomation>;
+  rawContents: string | null;
 }
 
 /**
@@ -42,13 +46,27 @@ export function useT3ProjectFileState(
         status: isPending ? "loading" : "missing",
         file: null,
         scripts: NO_SCRIPTS,
+        automations: NO_AUTOMATIONS,
+        rawContents: null,
       } as const;
     }
     const file = parseT3ProjectFile(contents);
     if (file === null) {
-      return { status: "invalid", file: null, scripts: NO_SCRIPTS } as const;
+      return {
+        status: "invalid",
+        file: null,
+        scripts: NO_SCRIPTS,
+        automations: NO_AUTOMATIONS,
+        rawContents: contents,
+      } as const;
     }
-    return { status: "valid", file, scripts: file.scripts ?? NO_SCRIPTS } as const;
+    return {
+      status: "valid",
+      file,
+      scripts: file.scripts ?? NO_SCRIPTS,
+      automations: file.automations ?? NO_AUTOMATIONS,
+      rawContents: contents,
+    } as const;
   }, [contents, isPending]);
 }
 
