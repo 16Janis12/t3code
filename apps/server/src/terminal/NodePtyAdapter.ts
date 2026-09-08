@@ -1,6 +1,4 @@
-import * as nodeFs from "node:fs";
 import * as NodeModule from "node:module";
-import * as nodePath from "node:path";
 
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -29,6 +27,8 @@ type NodePtyModuleLoader = () => Promise<typeof import("node-pty")>;
 const defaultLoadNodePtyModule: NodePtyModuleLoader = async () => {
   const requireForNodePty = NodeModule.createRequire(import.meta.url);
   try {
+    const nodeFs = requireForNodePty("node:fs") as typeof import("node:fs");
+    const nodePath = requireForNodePty("node:path") as typeof import("node:path");
     const utilsPath = requireForNodePty.resolve("node-pty/lib/utils.js");
     const nodePtyUtils = requireForNodePty(utilsPath) as {
       loadNativeModule?: (name: string) => { dir: string; module: unknown };
