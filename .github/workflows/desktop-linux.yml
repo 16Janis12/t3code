@@ -1,0 +1,166 @@
+name: Build Desktop Linux AppImage
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag name (default: desktop-latest)"
+        required: false
+        default: "desktop-latest"
+        type: string
+
+concurrency:
+  group: desktop-linux-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Linux AppImage (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: |
+            args:
+              - --filter=@t3tools/desktop...
+              - --filter=@16janis12/t3...
+              - --filter=@t3tools/scripts...
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Install Linux build dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libsecret-1-dev \
+            pkg-config \
+            imagemagick
+          # Optional FUSE compatibility for AppImage tools
+          sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2 || true
+
+      - name: Configure environment
+        shell: bash
+        run: |
+          if [ -f .env.example ]; then
+            cp .env.example .env
+          fi
+
+      - name: Build Desktop AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build-desktop-artifact.ts \
+            --platform linux \
+            --target AppImage \
+            --arch ${{ matrix.arch }} \
+            --verbose
+
+      - name: Collect AppImage output
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          shopt -s nullglob
+          for f in release/*.AppImage; do
+            echo "Found AppImage: $f"
+            cp "$f" artifacts/
+          done
+          ls -la artifacts/
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage-${{ matrix.arch }}
+          path: artifacts/*.AppImage
+          if-no-files-found: error
+
+  release:
+    name: Publish AppImage to GitHub Releases
+    needs: [build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all AppImage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: appimage-*
+          path: appimages-merged
+          merge-multiple: true
+
+      - name: List downloaded AppImages
+        shell: bash
+        run: |
+          ls -lh appimages-merged/
+
+      - name: Determine release tag
+        id: release_meta
+        shell: bash
+        run: |
+          if [[ -n "${{ inputs.tag_name }}" ]]; then
+            TAG="${{ inputs.tag_name }}"
+            TITLE="T3 Code Desktop ${TAG}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            TITLE="T3 Code Desktop ${TAG}"
+          else
+            TAG="desktop-latest"
+            TITLE="T3 Code Desktop (Latest)"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          name: ${{ steps.release_meta.outputs.title }}
+          prerelease: false
+          files: appimages-merged/*.AppImage
+          generate_release_notes: true
