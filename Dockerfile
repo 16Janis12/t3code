@@ -25,8 +25,19 @@ RUN git config --global credential.https://github.com.helper "" && \
 # Optional: pnpm via Corepack aktivieren (falls Workspaces pnpm nutzen)
 RUN corepack enable
 
-# T3 Code CLI global installieren
-RUN npm install -g t3
+# GitHub Token für den Zugriff auf GitHub Packages (@16janis12)
+ARG GH_TOKEN
+
+# T3 Code CLI aus GitHub Packages (@16janis12/t3) global installieren
+RUN if [ -z "${GH_TOKEN}" ]; then \
+      echo "ERROR: GH_TOKEN build argument is required to install @16janis12/t3 from GitHub Packages." >&2; \
+      exit 1; \
+    fi && \
+    npm config set @16janis12:registry https://npm.pkg.github.com && \
+    npm config set //npm.pkg.github.com/:_authToken "${GH_TOKEN}" && \
+    npm install -g @16janis12/t3 && \
+    npm config delete //npm.pkg.github.com/:_authToken && \
+    rm -rf /root/.npm
 
 # Arbeitsverzeichnis auf das gemountete Workspaces-Volume legen
 WORKDIR /workspaces

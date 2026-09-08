@@ -21,12 +21,15 @@ services:
     restart: unless-stopped
 
   t3code:
-    build: .
+    build:
+      context: .
+      args:
+        GH_TOKEN: ${GH_TOKEN:-${GITHUB_TOKEN:-}}
     container_name: t3code-headless
     network_mode: "service:tailscale"
     environment:
       - T3CODE_HOST=0.0.0.0
-      - GH_TOKEN=${GH_TOKEN}
+      - GH_TOKEN=${GH_TOKEN:-${GITHUB_TOKEN:-}}
       - GIT_AUTHOR_NAME=${GIT_AUTHOR_NAME:-T3 User}
       - GIT_AUTHOR_EMAIL=${GIT_AUTHOR_EMAIL:-t3@example.com}
       - GIT_COMMITTER_NAME=${GIT_COMMITTER_NAME:-${GIT_AUTHOR_NAME:-T3 User}}
