@@ -1,6 +1,9 @@
 import {
   CommandId,
+  DEFAULT_MODEL,
+  DEFAULT_PROVIDER_INTERACTION_MODE,
   ProjectId,
+  ProviderInstanceId,
   type OrchestrationCommand,
   type OrchestrationProjectShell,
   type OrchestrationShellSnapshot,
@@ -29,6 +32,7 @@ const project: OrchestrationProjectShell = {
   id: PROJECT_ID,
   title: "My Project",
   workspaceRoot: WORKSPACE_ROOT,
+  defaultModelSelection: null,
   defaultThreadEnvMode: null,
   createdAt: "2026-09-08T00:00:00.000Z",
   updatedAt: "2026-09-08T00:00:00.000Z",
@@ -36,6 +40,7 @@ const project: OrchestrationProjectShell = {
 };
 
 interface HarnessOptions {
+  readonly project?: OrchestrationProjectShell;
   readonly projectFile?: T3ProjectFile;
   readonly ghPrOutput?: string;
   readonly ghIssueOutput?: string;
@@ -68,7 +73,7 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
   const snapshotQueryLayer = Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
     getShellSnapshot: () =>
       Effect.succeed({
-        projects: [project],
+        projects: [options.project ?? project],
         threads: [],
         projectSequence: 1,
         threadSequence: 1,
@@ -124,15 +129,15 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
   const reactorLayer = AutomationReactor.layer.pipe(Layer.provide(dependencies));
 
   return {
+    reactorLayer,
     dispatchedCommands,
     executedScripts,
     ghCommands,
-    reactorLayer,
   };
 });
 
 describe("AutomationReactor", () => {
-  it.effect("executes cron automations and creates thread with template prompt", () =>
+  it.effect("executes thread actions for matching cron schedules", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const fixture = yield* makeHarness({
@@ -171,6 +176,12 @@ describe("AutomationReactor", () => {
         if (createCmd.type === "thread.create") {
           expect(createCmd.title).toBe("Daily Sync - My Project");
           expect(createCmd.projectId).toBe(PROJECT_ID);
+          expect(createCmd.modelSelection).toEqual({
+            instanceId: ProviderInstanceId.make("codex"),
+            model: DEFAULT_MODEL,
+          });
+          expect(createCmd.interactionMode).toBe(DEFAULT_PROVIDER_INTERACTION_MODE);
+          expect(createCmd.runtimeMode).toBe("full-access");
         }
 
         const turnCmd = commands[1]!;
@@ -183,6 +194,110 @@ describe("AutomationReactor", () => {
         yield* reactor.pollOnce({ now: matchingDate });
         const commandsAfterSecondPoll = yield* Ref.get(fixture.dispatchedCommands);
         expect(commandsAfterSecondPoll).toHaveLength(2);
+      }),
+    ),
+  );
+
+  it.effect("uses project.defaultModelSelection when action has no modelSelection", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const customModelSelection = {
+          instanceId: ProviderInstanceId.make("claude"),
+          model: "claude-3-7-sonnet",
+        };
+        const fixture = yield* makeHarness({
+          project: {
+            ...project,
+            defaultModelSelection: customModelSelection,
+          },
+          projectFile: {
+            automations: [
+              {
+                id: "daily-sync",
+                name: "Daily Sync",
+                trigger: {
+                  type: "cron",
+                  schedule: "30 9 * * *",
+                },
+                action: {
+                  type: "thread",
+                  prompt: "Run daily sync",
+                },
+              },
+            ],
+          },
+        });
+
+        const reactor = yield* AutomationReactor.AutomationReactor.pipe(
+          Effect.provide(fixture.reactorLayer),
+        );
+
+        yield* reactor.pollOnce({ now: new Date("2026-09-08T09:30:00.000Z") });
+
+        const commands = yield* Ref.get(fixture.dispatchedCommands);
+        expect(commands).toHaveLength(2);
+
+        const createCmd = commands[0]!;
+        expect(createCmd.type).toBe("thread.create");
+        if (createCmd.type === "thread.create") {
+          expect(createCmd.modelSelection).toEqual(customModelSelection);
+          expect(createCmd.interactionMode).toBe(DEFAULT_PROVIDER_INTERACTION_MODE);
+        }
+      }),
+    ),
+  );
+
+  it.effect("uses action.modelSelection and runtimeMode when explicitly specified", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const actionModelSelection = {
+          instanceId: ProviderInstanceId.make("custom-instance"),
+          model: "gpt-4o",
+        };
+        const fixture = yield* makeHarness({
+          project: {
+            ...project,
+            defaultModelSelection: {
+              instanceId: ProviderInstanceId.make("claude"),
+              model: "claude-3-7-sonnet",
+            },
+          },
+          projectFile: {
+            automations: [
+              {
+                id: "custom-automation",
+                name: "Custom",
+                trigger: {
+                  type: "cron",
+                  schedule: "* * * * *",
+                },
+                action: {
+                  type: "thread",
+                  prompt: "Run custom",
+                  modelSelection: actionModelSelection,
+                  runtimeMode: "read-only",
+                },
+              },
+            ],
+          },
+        });
+
+        const reactor = yield* AutomationReactor.AutomationReactor.pipe(
+          Effect.provide(fixture.reactorLayer),
+        );
+
+        yield* reactor.pollOnce({ now: new Date("2026-09-08T09:30:00.000Z") });
+
+        const commands = yield* Ref.get(fixture.dispatchedCommands);
+        expect(commands).toHaveLength(2);
+
+        const createCmd = commands[0]!;
+        expect(createCmd.type).toBe("thread.create");
+        if (createCmd.type === "thread.create") {
+          expect(createCmd.modelSelection).toEqual(actionModelSelection);
+          expect(createCmd.runtimeMode).toBe("read-only");
+          expect(createCmd.interactionMode).toBe(DEFAULT_PROVIDER_INTERACTION_MODE);
+        }
       }),
     ),
   );
