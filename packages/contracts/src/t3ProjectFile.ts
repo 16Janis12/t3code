@@ -2,7 +2,7 @@ import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import { ThreadEnvMode } from "./environment.ts";
-import { ProjectScriptIcon } from "./orchestration.ts";
+import { ModelSelection, ProjectScriptIcon, RuntimeMode } from "./orchestration.ts";
 
 /** File name of the checked-in T3 project file, resolved at the workspace root. */
 export const T3_PROJECT_FILE_NAME = "t3.json";
@@ -12,6 +12,7 @@ export const T3_PROJECT_FILE_SCHEMA_URL = "https://t3.codes/schema/t3.json";
 
 const T3_PROJECT_FILE_PATH_MAX_LENGTH = 512;
 const T3_PROJECT_FILE_MAX_SCRIPTS = 50;
+const T3_PROJECT_FILE_MAX_AUTOMATIONS = 50;
 
 // Annotations go on the encoded (string) side so they survive into the
 // published JSON Schema; decoding still trims and re-validates non-emptiness.
@@ -59,6 +60,141 @@ export const T3ProjectFileScript = Schema.Struct({
 });
 export type T3ProjectFileScript = typeof T3ProjectFileScript.Type;
 
+export const AutomationGitHubPrEvent = Schema.Literals([
+  "opened",
+  "synchronize",
+  "closed",
+  "merged",
+  "reopened",
+  "review_requested",
+]);
+export type AutomationGitHubPrEvent = typeof AutomationGitHubPrEvent.Type;
+
+export const AutomationGitHubPrTrigger = Schema.Struct({
+  type: Schema.Literal("github_pr"),
+  events: Schema.optionalKey(
+    Schema.Array(AutomationGitHubPrEvent).annotate({
+      description: 'PR events to listen for. Defaults to ["opened", "synchronize"].',
+    }),
+  ),
+  targetBranches: Schema.optionalKey(
+    Schema.Array(trimmedNonEmpty({ description: "Target base branch name" })).annotate({
+      description: 'Optional branch filter (e.g. ["main"]).',
+    }),
+  ),
+}).annotate({
+  description: "Trigger that fires when GitHub pull request events occur.",
+});
+export type AutomationGitHubPrTrigger = typeof AutomationGitHubPrTrigger.Type;
+
+export const AutomationGitHubIssueEvent = Schema.Literals([
+  "opened",
+  "closed",
+  "reopened",
+  "labeled",
+  "assigned",
+]);
+export type AutomationGitHubIssueEvent = typeof AutomationGitHubIssueEvent.Type;
+
+export const AutomationGitHubIssueTrigger = Schema.Struct({
+  type: Schema.Literal("github_issue"),
+  events: Schema.optionalKey(
+    Schema.Array(AutomationGitHubIssueEvent).annotate({
+      description: 'Issue events to listen for. Defaults to ["opened"].',
+    }),
+  ),
+  labels: Schema.optionalKey(
+    Schema.Array(trimmedNonEmpty({ description: "Issue label name" })).annotate({
+      description: 'Optional label filter (e.g. ["bug", "agent-ready"]).',
+    }),
+  ),
+}).annotate({
+  description: "Trigger that fires when GitHub issue events occur.",
+});
+export type AutomationGitHubIssueTrigger = typeof AutomationGitHubIssueTrigger.Type;
+
+export const AutomationCronTrigger = Schema.Struct({
+  type: Schema.Literal("cron"),
+  schedule: trimmedNonEmpty({
+    description:
+      'Cron expression (e.g. "0 9 * * 1-5" or "*/30 * * * *") or shortcut ("@hourly", "@daily").',
+  }),
+}).annotate({
+  description: "Trigger that fires on a recurring schedule.",
+});
+export type AutomationCronTrigger = typeof AutomationCronTrigger.Type;
+
+export const AutomationTrigger = Schema.Union([
+  AutomationCronTrigger,
+  AutomationGitHubPrTrigger,
+  AutomationGitHubIssueTrigger,
+]).annotate({
+  description: "Trigger conditions for an automation.",
+});
+export type AutomationTrigger = typeof AutomationTrigger.Type;
+
+export const AutomationThreadAction = Schema.Struct({
+  type: Schema.Literal("thread"),
+  prompt: trimmedNonEmpty({
+    description:
+      "Prompt template sent to the agent thread. Supports variables like ${event.type}, ${pr.number}, ${pr.title}, ${issue.number}, ${issue.title}.",
+  }),
+  title: Schema.optionalKey(
+    trimmedNonEmpty({
+      description: "Optional thread title template.",
+    }),
+  ),
+  modelSelection: Schema.optionalKey(ModelSelection),
+  runtimeMode: Schema.optionalKey(RuntimeMode),
+}).annotate({
+  description: "Action that starts a new agent thread with an initial prompt.",
+});
+export type AutomationThreadAction = typeof AutomationThreadAction.Type;
+
+export const AutomationScriptAction = Schema.Struct({
+  type: Schema.Literal("script"),
+  command: Schema.optionalKey(
+    trimmedNonEmpty({
+      description: "Shell command executed at the project root.",
+    }),
+  ),
+  scriptName: Schema.optionalKey(
+    trimmedNonEmpty({
+      description: "Name of an existing project script in t3.json to run.",
+    }),
+  ),
+}).annotate({
+  description: "Action that executes a script or shell command at the project root.",
+});
+export type AutomationScriptAction = typeof AutomationScriptAction.Type;
+
+export const AutomationAction = Schema.Union([
+  AutomationThreadAction,
+  AutomationScriptAction,
+]).annotate({
+  description: "Action performed when an automation trigger fires.",
+});
+export type AutomationAction = typeof AutomationAction.Type;
+
+export const T3ProjectFileAutomation = Schema.Struct({
+  id: trimmedNonEmpty({
+    description: "Unique identifier for this automation within the project.",
+  }),
+  name: trimmedNonEmpty({
+    description: "Human-readable display name for the automation.",
+  }),
+  enabled: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description: "Whether the automation is active. Defaults to true.",
+    }),
+  ),
+  trigger: AutomationTrigger,
+  action: AutomationAction,
+}).annotate({
+  description: "An automation rule reacting to cron schedules or GitHub events.",
+});
+export type T3ProjectFileAutomation = typeof T3ProjectFileAutomation.Type;
+
 export const T3ProjectFile = Schema.Struct({
   $schema: Schema.optionalKey(
     Schema.String.annotate({
@@ -86,6 +222,13 @@ export const T3ProjectFile = Schema.Struct({
         description: "Project scripts shared with everyone who opens this repository in T3 Code.",
       })
       .check(Schema.isMaxLength(T3_PROJECT_FILE_MAX_SCRIPTS)),
+  ),
+  automations: Schema.optionalKey(
+    Schema.Array(T3ProjectFileAutomation)
+      .annotate({
+        description: "Automations configured for this project (cron, github_pr, github_issue).",
+      })
+      .check(Schema.isMaxLength(T3_PROJECT_FILE_MAX_AUTOMATIONS)),
   ),
 }).annotate({
   title: "T3 project file",
