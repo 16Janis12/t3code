@@ -1308,34 +1308,98 @@ export const make = Effect.gen(function* () {
         return { oldContents, newContents };
       });
 
-  const getPullRequestDetail: GitHubPullRequestCli["Service"]["getPullRequestDetail"] = (input) =>
-    github
-      .execute({
-        cwd: input.cwd,
-        args: [
-          "pr",
-          "view",
-          String(input.number),
-          ...repositoryArgs(input),
-          "--json",
-          PULL_REQUEST_DETAIL_JSON_FIELDS,
-        ],
-      })
-      .pipe(
-        Effect.flatMap((result) => {
-          const decoded = decodePullRequestDetailJson(result.stdout.trim());
-          return Result.isSuccess(decoded)
-            ? Effect.succeed(decoded.success)
-            : Effect.fail(
-                new GitHubPullRequestReadError({
-                  command: "gh",
-                  cwd: input.cwd,
-                  operation: "getPullRequestDetail",
-                  cause: decoded.failure,
-                }),
-              );
-        }),
-      );
+  const unsupportedJsonFields = new Set<string>();
+
+  const filterUnsupportedFields = (fields: string): string => {
+    if (unsupportedJsonFields.size === 0) return fields;
+    return fields
+      .split(",")
+      .map((f) => f.trim())
+      .filter((f) => f.length > 0 && !unsupportedJsonFields.has(f))
+      .join(",");
+  };
+
+  const extractStderr = (error: unknown): string => {
+    if (
+      error &&
+      typeof error === "object" &&
+      "cause" in error &&
+      error.cause &&
+      typeof error.cause === "object" &&
+      "stderr" in error.cause &&
+      typeof error.cause.stderr === "string"
+    ) {
+      return error.cause.stderr;
+    }
+    if (
+      error &&
+      typeof error === "object" &&
+      "detail" in error &&
+      typeof error.detail === "string"
+    ) {
+      return error.detail;
+    }
+    return "";
+  };
+
+  const removeJsonField = (fields: string, fieldToRemove: string): string =>
+    fields
+      .split(",")
+      .map((f) => f.trim())
+      .filter((f) => f.length > 0 && f !== fieldToRemove)
+      .join(",");
+
+  const getPullRequestDetail: GitHubPullRequestCli["Service"]["getPullRequestDetail"] = (input) => {
+    const executeWithFallback = (
+      fields: string,
+    ): Effect.Effect<GitHubPullRequestDetail, GitHubPullRequestCliError> =>
+      github
+        .execute({
+          cwd: input.cwd,
+          args: ["pr", "view", String(input.number), ...repositoryArgs(input), "--json", fields],
+        })
+        .pipe(
+          Effect.flatMap((result) => {
+            const decoded = decodePullRequestDetailJson(result.stdout.trim());
+            return Result.isSuccess(decoded)
+              ? Effect.succeed(decoded.success)
+              : Effect.fail(
+                  new GitHubPullRequestReadError({
+                    command: "gh",
+                    cwd: input.cwd,
+                    operation: "getPullRequestDetail",
+                    cause: decoded.failure,
+                  }),
+                );
+          }),
+          Effect.catchTag("GitHubCliCommandError", (error) => {
+            const stderr = extractStderr(error);
+            const unknownFieldMatch = stderr.match(/Unknown JSON field:?\s*"([^"]+)"/i);
+            if (unknownFieldMatch && unknownFieldMatch[1]) {
+              const field = unknownFieldMatch[1];
+              if (fields.includes(field)) {
+                unsupportedJsonFields.add(field);
+                const nextFields = removeJsonField(fields, field);
+                if (nextFields.length > 0) {
+                  return executeWithFallback(nextFields);
+                }
+              }
+            }
+            if (/(?:required scopes|insufficient_scopes|read:org)/i.test(stderr)) {
+              if (fields.includes("reviewRequests")) {
+                unsupportedJsonFields.add("reviewRequests");
+                const nextFields = removeJsonField(fields, "reviewRequests");
+                if (nextFields.length > 0) {
+                  return executeWithFallback(nextFields);
+                }
+              }
+            }
+            return Effect.fail(error);
+          }),
+        );
+
+    return executeWithFallback(filterUnsupportedFields(PULL_REQUEST_DETAIL_JSON_FIELDS));
+  };
 
   const workflowApprovalLimit = 1_000;
   const workflowApprovalProbeLimit = String(workflowApprovalLimit + 1);
@@ -1476,64 +1540,94 @@ export const make = Effect.gen(function* () {
       const read = (
         continues: boolean,
         requestedRows = input.limit + 1,
-      ): Effect.Effect<GitHubPullRequestListBatch, GitHubPullRequestCliError> =>
-        github
-          .execute({
-            cwd: input.cwd,
-            args: [
-              "pr",
-              "list",
-              ...repositoryArgs(input),
-              ...involvementArgs({ ...input, sorted: continues }),
-              "--state",
-              input.state,
-              "--limit",
-              // One extra row reveals that the repository has more than the page shows.
-              String(requestedRows),
-              "--json",
-              PULL_REQUEST_LIST_JSON_FIELDS,
-            ],
-          })
-          .pipe(
-            Effect.flatMap((result) => {
-              const raw = result.stdout.trim();
-              if (raw.length === 0) {
-                return Effect.succeed({ items: [], truncated: false, continues });
-              }
-              const decoded = decodePullRequestListJson(raw);
-              if (Result.isSuccess(decoded)) {
-                const items = continues
-                  ? decoded.success.items
-                  : decoded.success.items.filter((item) => matchesUnsortedListing(item, input));
-                if (
-                  !continues &&
-                  items.length < input.limit &&
-                  decoded.success.rawCount >= requestedRows &&
-                  requestedRows < fallbackMaxRows
-                ) {
-                  const nextRows = Math.min(requestedRows * 2, fallbackMaxRows);
-                  if (nextRows > requestedRows) return read(false, nextRows);
+      ): Effect.Effect<GitHubPullRequestListBatch, GitHubPullRequestCliError> => {
+        const executeListWithFallback = (
+          fields: string,
+        ): Effect.Effect<GitHubPullRequestListBatch, GitHubPullRequestCliError> =>
+          github
+            .execute({
+              cwd: input.cwd,
+              args: [
+                "pr",
+                "list",
+                ...repositoryArgs(input),
+                ...involvementArgs({ ...input, sorted: continues }),
+                "--state",
+                input.state,
+                "--limit",
+                // One extra row reveals that the repository has more than the page shows.
+                String(requestedRows),
+                "--json",
+                fields,
+              ],
+            })
+            .pipe(
+              Effect.flatMap((result) => {
+                const raw = result.stdout.trim();
+                if (raw.length === 0) {
+                  return Effect.succeed({ items: [], truncated: false, continues });
                 }
-                return Effect.succeed({
-                  items: items.slice(0, input.limit),
-                  // One row over the page size is the probe for a next page, and it is
-                  // counted before decoding: a skipped malformed row must not end paging.
-                  truncated: continues
-                    ? decoded.success.rawCount > input.limit
-                    : items.length > input.limit || decoded.success.rawCount >= requestedRows,
-                  continues,
-                });
-              }
-              return Effect.fail(
-                new GitHubPullRequestReadError({
-                  command: "gh",
-                  cwd: input.cwd,
-                  operation: "listPullRequests",
-                  cause: decoded.failure,
-                }),
-              );
-            }),
-          );
+                const decoded = decodePullRequestListJson(raw);
+                if (Result.isSuccess(decoded)) {
+                  const items = continues
+                    ? decoded.success.items
+                    : decoded.success.items.filter((item) => matchesUnsortedListing(item, input));
+                  if (
+                    !continues &&
+                    items.length < input.limit &&
+                    decoded.success.rawCount >= requestedRows &&
+                    requestedRows < fallbackMaxRows
+                  ) {
+                    const nextRows = Math.min(requestedRows * 2, fallbackMaxRows);
+                    if (nextRows > requestedRows) return read(false, nextRows);
+                  }
+                  return Effect.succeed({
+                    items: items.slice(0, input.limit),
+                    // One row over the page size is the probe for a next page, and it is
+                    // counted before decoding: a skipped malformed row must not end paging.
+                    truncated: continues
+                      ? decoded.success.rawCount > input.limit
+                      : items.length > input.limit || decoded.success.rawCount >= requestedRows,
+                    continues,
+                  });
+                }
+                return Effect.fail(
+                  new GitHubPullRequestReadError({
+                    command: "gh",
+                    cwd: input.cwd,
+                    operation: "listPullRequests",
+                    cause: decoded.failure,
+                  }),
+                );
+              }),
+              Effect.catchTag("GitHubCliCommandError", (error) => {
+                const stderr = extractStderr(error);
+                const unknownFieldMatch = stderr.match(/Unknown JSON field:?\s*"([^"]+)"/i);
+                if (unknownFieldMatch && unknownFieldMatch[1]) {
+                  const field = unknownFieldMatch[1];
+                  if (fields.includes(field)) {
+                    unsupportedJsonFields.add(field);
+                    const nextFields = removeJsonField(fields, field);
+                    if (nextFields.length > 0) {
+                      return executeListWithFallback(nextFields);
+                    }
+                  }
+                }
+                if (/(?:required scopes|insufficient_scopes|read:org)/i.test(stderr)) {
+                  if (fields.includes("reviewRequests")) {
+                    unsupportedJsonFields.add("reviewRequests");
+                    const nextFields = removeJsonField(fields, "reviewRequests");
+                    if (nextFields.length > 0) {
+                      return executeListWithFallback(nextFields);
+                    }
+                  }
+                }
+                return Effect.fail(error);
+              }),
+            );
+
+        return executeListWithFallback(filterUnsupportedFields(PULL_REQUEST_LIST_JSON_FIELDS));
+      };
       // GitHub does not index every repository for search, and one it will not search answers
       // with no rows rather than with an error — so an empty listing is read again the way `gh`
       // lists without one. Those rows come back newest-created first, an order no `updated:`

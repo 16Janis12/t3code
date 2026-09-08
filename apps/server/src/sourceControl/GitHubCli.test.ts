@@ -415,4 +415,33 @@ describe("GitHubCli.layer", () => {
       assert.notInclude(error.message, "user ID");
     }).pipe(Effect.provide(layer)),
   );
+
+  it("extracts actionable stderr detail for command failures", () => {
+    const causeWithStderr = new VcsProcessExitError({
+      operation: "GitHubCli.execute",
+      command: "gh",
+      cwd: "/repo",
+      exitCode: 1,
+      detail: "Process exited with a non-zero status.",
+      stderr: 'Unknown JSON field: "autoMergeRequest"\nDid you mean one of...',
+    });
+    const error = GitHubCli.fromVcsError({ command: "gh", cwd: "/repo" }, causeWithStderr);
+    assert.strictEqual(error._tag, "GitHubCliCommandError");
+    assert.strictEqual(error.detail, 'Unknown JSON field: "autoMergeRequest"');
+    assert.include(error.message, 'Unknown JSON field: "autoMergeRequest"');
+
+    const causeWithoutStderr = new VcsProcessExitError({
+      operation: "GitHubCli.execute",
+      command: "gh",
+      cwd: "/repo",
+      exitCode: 1,
+      detail: "Process exited with a non-zero status.",
+    });
+    const errorDefault = GitHubCli.fromVcsError(
+      { command: "gh", cwd: "/repo" },
+      causeWithoutStderr,
+    );
+    assert.strictEqual(errorDefault._tag, "GitHubCliCommandError");
+    assert.strictEqual(errorDefault.detail, "GitHub CLI command failed.");
+  });
 });

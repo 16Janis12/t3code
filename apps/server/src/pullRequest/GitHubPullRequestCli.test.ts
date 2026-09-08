@@ -4,6 +4,7 @@ import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
+import { VcsProcessExitError } from "@t3tools/contracts";
 import * as GitHubCli from "../sourceControl/GitHubCli.ts";
 import * as GitHubGraphQlBudget from "../sourceControl/githubGraphQlBudget.ts";
 import * as GitHubPullRequestCli from "./GitHubPullRequestCli.ts";
@@ -2526,6 +2527,151 @@ layer("GitHubPullRequestCli.layer", (it) => {
         "number,title,url,author,headRefName,baseRefName,state,isDraft,mergeable,reviewDecision,additions,deletions,createdAt,updatedAt,mergedAt,reviewRequests,labels,statusCheckRollup,body,changedFiles,closedAt,isCrossRepository,headRepositoryOwner,headRefOid,autoMergeRequest",
       );
       expect(callAt(1).args.at(-1)).toBe("author,comments,reviews,commits");
+    }),
+  );
+
+  it.effect(
+    "retries and succeeds when getPullRequestDetail encounters unsupported autoMergeRequest and reviewRequests scopes",
+    () =>
+      Effect.gen(function* () {
+        const unsupportedAutoMergeError = new GitHubCli.GitHubCliCommandError({
+          command: "gh",
+          cwd: "/w",
+          cause: new VcsProcessExitError({
+            operation: "GitHubCli.execute",
+            command: "gh",
+            cwd: "/w",
+            exitCode: 1,
+            detail: 'Unknown JSON field: "autoMergeRequest"',
+            stderr: 'Unknown JSON field: "autoMergeRequest"\nDid you mean one of...',
+          }),
+        });
+        const missingOrgScopeError = new GitHubCli.GitHubCliCommandError({
+          command: "gh",
+          cwd: "/w",
+          cause: new VcsProcessExitError({
+            operation: "GitHubCli.execute",
+            command: "gh",
+            cwd: "/w",
+            exitCode: 1,
+            detail:
+              "GraphQL: Your token has not been granted the required scopes to execute this query. The 'login' field requires one of the following scopes: ['read:org']",
+            stderr:
+              "GraphQL: Your token has not been granted the required scopes to execute this query. The 'login' field requires one of the following scopes: ['read:org']",
+          }),
+        });
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        const successfulDetailJson = JSON.stringify({
+          number: 8,
+          title: "Resilient detail",
+          url: "https://github.com/acme/web/pull/8",
+          author: { login: "octocat" },
+          headRefName: "feature",
+          baseRefName: "main",
+          createdAt: "2026-07-01T00:00:00Z",
+          updatedAt: "2026-07-02T00:00:00Z",
+          body: "Loaded despite old gh",
+          changedFiles: 1,
+        });
+
+        // First call fails with autoMergeRequest
+        mockedExecute.mockReturnValueOnce(Effect.fail(unsupportedAutoMergeError));
+        // Second call fails with missing read:org scope on reviewRequests
+        mockedExecute.mockReturnValueOnce(Effect.fail(missingOrgScopeError));
+        // Third call succeeds
+        mockedExecute.mockReturnValueOnce(Effect.succeed(output(successfulDetailJson)));
+
+        const cli = yield* GitHubPullRequestCli.GitHubPullRequestCli;
+        const input = {
+          cwd: "/w",
+          repository: "acme/web",
+          host: "github.com",
+          number: 8,
+        } as const;
+
+        const detail = yield* cli.getPullRequestDetail(input);
+        expect(detail.body).toBe("Loaded despite old gh");
+        expect(detail.autoMergeEnabled).toBeUndefined();
+
+        // Check fields for each of the 3 calls:
+        const firstCallFields = mockedExecute.mock.calls.at(-3)?.[0].args.at(-1);
+        const secondCallFields = mockedExecute.mock.calls.at(-2)?.[0].args.at(-1);
+        const thirdCallFields = mockedExecute.mock.calls.at(-1)?.[0].args.at(-1);
+
+        expect(firstCallFields).toContain("autoMergeRequest");
+        expect(firstCallFields).toContain("reviewRequests");
+
+        expect(secondCallFields).not.toContain("autoMergeRequest");
+        expect(secondCallFields).toContain("reviewRequests");
+
+        expect(thirdCallFields).not.toContain("autoMergeRequest");
+        expect(thirdCallFields).not.toContain("reviewRequests");
+
+        // Verify subsequent call uses the learned supported fields directly:
+        mockedExecute.mockReturnValueOnce(Effect.succeed(output(successfulDetailJson)));
+        const secondDetail = yield* cli.getPullRequestDetail(input);
+        expect(secondDetail.title).toBe("Resilient detail");
+        const fourthCallFields = mockedExecute.mock.calls.at(-1)?.[0].args.at(-1);
+        expect(fourthCallFields).not.toContain("autoMergeRequest");
+        expect(fourthCallFields).not.toContain("reviewRequests");
+      }),
+  );
+
+  it.effect("retries and succeeds when listPullRequests encounters an unsupported field", () =>
+    Effect.gen(function* () {
+      const unknownFieldError = new GitHubCli.GitHubCliCommandError({
+        command: "gh",
+        cwd: "/w",
+        cause: new VcsProcessExitError({
+          operation: "GitHubCli.execute",
+          command: "gh",
+          cwd: "/w",
+          exitCode: 1,
+          detail: 'Unknown JSON field: "labels"',
+          stderr: 'Unknown JSON field: "labels"',
+        }),
+      });
+
+      mockedExecute.mockReturnValueOnce(Effect.fail(unknownFieldError));
+      mockedExecute.mockReturnValueOnce(
+        Effect.succeed(
+          output(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify([
+              {
+                number: 9,
+                title: "PR in list",
+                url: "https://github.com/acme/web/pull/9",
+                headRefName: "feature",
+                baseRefName: "main",
+                state: "OPEN",
+                createdAt: "2026-07-01T00:00:00Z",
+                updatedAt: "2026-07-02T00:00:00Z",
+              },
+            ]),
+          ),
+        ),
+      );
+
+      const cli = yield* GitHubPullRequestCli.GitHubPullRequestCli;
+      const batch = yield* cli.listPullRequests({
+        cwd: "/w",
+        repository: "acme/web",
+        host: "github.com",
+        state: "open",
+        limit: 10,
+        involvement: "all",
+        viewer: "octocat",
+      });
+
+      expect(batch.items.length).toBe(1);
+      expect(batch.items[0]?.number).toBe(9);
+
+      const failedCallFields = mockedExecute.mock.calls.at(-2)?.[0].args.at(-1);
+      const successfulCallFields = mockedExecute.mock.calls.at(-1)?.[0].args.at(-1);
+
+      expect(failedCallFields).toContain("labels");
+      expect(successfulCallFields).not.toContain("labels");
     }),
   );
 

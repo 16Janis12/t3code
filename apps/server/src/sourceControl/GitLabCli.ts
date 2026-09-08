@@ -118,6 +118,32 @@ export class GitLabCliCommandError extends Schema.TaggedError<GitLabCliCommandEr
   gitLabCliExecutionErrorContext,
 ) {
   get detail(): string {
+    const rawStderr =
+      this.cause &&
+      typeof this.cause === "object" &&
+      "stderr" in this.cause &&
+      typeof this.cause.stderr === "string"
+        ? this.cause.stderr
+        : undefined;
+    if (rawStderr) {
+      const firstLine = rawStderr
+        .trim()
+        .split("\n")
+        .map((line) => line.trim())
+        .find((line) => line.length > 0);
+      if (firstLine) {
+        return firstLine;
+      }
+    }
+    if (
+      this.cause &&
+      typeof this.cause === "object" &&
+      "detail" in this.cause &&
+      typeof this.cause.detail === "string" &&
+      this.cause.detail !== "Process exited with a non-zero status."
+    ) {
+      return this.cause.detail;
+    }
     return "GitLab CLI command failed.";
   }
 

@@ -121,6 +121,7 @@ export class VcsProcessExitError extends Schema.TaggedError<VcsProcessExitError>
     failureKind: Schema.optional(VcsProcessExitFailureKind),
     stderrLength: Schema.optional(NonNegativeInt),
     stderrTruncated: Schema.optional(Schema.Boolean),
+    stderr: Schema.optional(Schema.String),
   },
 ) {
   override get message(): string {
@@ -152,6 +153,10 @@ export class VcsProcessExitError extends Schema.TaggedError<VcsProcessExitError>
       failureKind,
       stderrLength: error.stderr.length,
       stderrTruncated: error.stderrTruncated,
+      stderr:
+        failureKind === "authentication" || failureKind === "rate-limited"
+          ? undefined
+          : error.stderr,
     });
   }
 }
