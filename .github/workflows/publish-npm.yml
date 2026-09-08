@@ -15,8 +15,66 @@ permissions:
   packages: write
 
 jobs:
+  build_prebuilds:
+    name: Build Native Prebuilds (${{ matrix.platform_key }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform_key: linux-x64
+          - runner: ubuntu-24.04-arm
+            platform_key: linux-arm64
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: |
+            args:
+              - --filter=@16janis12/t3...
+
+      - name: Build node-pty native binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          pty_pkg="$(node -e "console.log(require.resolve('node-pty/package.json', { paths: ['$GITHUB_WORKSPACE/apps/server'] }))")"
+          pty_dir="$(dirname "$pty_pkg")"
+          ( cd "$pty_dir" && npx --yes node-gyp rebuild )
+          mkdir -p "prebuilds/${{ matrix.platform_key }}"
+          cp "$pty_dir/build/Release/pty.node" "prebuilds/${{ matrix.platform_key }}/pty.node"
+          file "prebuilds/${{ matrix.platform_key }}/pty.node"
+
+      - name: Build resource monitor
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml || true
+          if [ -f "native/resource-monitor/target/release/t3-resource-monitor" ]; then
+            cp "native/resource-monitor/target/release/t3-resource-monitor" "prebuilds/${{ matrix.platform_key }}/t3-resource-monitor"
+            file "prebuilds/${{ matrix.platform_key }}/t3-resource-monitor"
+          fi
+
+      - name: Upload native prebuild artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebuild-${{ matrix.platform_key }}
+          path: prebuilds/${{ matrix.platform_key }}/*
+
   publish:
     name: Build & Publish Package
+    needs: [build_prebuilds]
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -75,6 +133,44 @@ jobs:
 
       - name: Build server and web assets
         run: vp run --filter @16janis12/t3 build
+
+      - name: Download native prebuilds
+        uses: actions/download-artifact@v4
+        with:
+          pattern: prebuild-*
+          path: ${{ runner.temp }}/native-prebuilds
+
+      - name: Embed native prebuilds into CLI package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p apps/server/dist/prebuilds
+          mkdir -p apps/server/dist/resource-monitor
+          for dir in "$RUNNER_TEMP"/native-prebuilds/prebuild-*; do
+            platform_key="${dir##*/prebuild-}"
+            mkdir -p "apps/server/dist/prebuilds/${platform_key}"
+            mkdir -p "apps/server/dist/resource-monitor/${platform_key}"
+            if [ -f "$dir/pty.node" ]; then
+              cp "$dir/pty.node" "apps/server/dist/prebuilds/${platform_key}/pty.node"
+              echo "Installed prebuild: apps/server/dist/prebuilds/${platform_key}/pty.node"
+            fi
+            if [ -f "$dir/t3-resource-monitor" ]; then
+              cp "$dir/t3-resource-monitor" "apps/server/dist/resource-monitor/${platform_key}/t3-resource-monitor"
+              chmod +x "apps/server/dist/resource-monitor/${platform_key}/t3-resource-monitor"
+              echo "Installed resource-monitor: apps/server/dist/resource-monitor/${platform_key}/t3-resource-monitor"
+            fi
+          done
+
+          # Also copy prebuilds into local node-pty
+          pty_pkg="$(node -e "console.log(require.resolve('node-pty/package.json', { paths: ['$GITHUB_WORKSPACE/apps/server'] }))")"
+          pty_dir="$(dirname "$pty_pkg")"
+          for dir in "$RUNNER_TEMP"/native-prebuilds/prebuild-*; do
+            platform_key="${dir##*/prebuild-}"
+            if [ -f "$dir/pty.node" ]; then
+              mkdir -p "$pty_dir/prebuilds/${platform_key}"
+              cp "$dir/pty.node" "$pty_dir/prebuilds/${platform_key}/pty.node"
+            fi
+          done
 
       - name: Publish package to GitHub Packages
         env:

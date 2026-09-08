@@ -1,4 +1,6 @@
+import * as nodeFs from "node:fs";
 import * as NodeModule from "node:module";
+import * as nodePath from "node:path";
 
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -23,6 +25,53 @@ export class NodePtyModuleLoadError extends Schema.TaggedError<NodePtyModuleLoad
 }
 
 type NodePtyModuleLoader = () => Promise<typeof import("node-pty")>;
+
+const defaultLoadNodePtyModule: NodePtyModuleLoader = async () => {
+  const requireForNodePty = NodeModule.createRequire(import.meta.url);
+  try {
+    const utilsPath = requireForNodePty.resolve("node-pty/lib/utils.js");
+    const nodePtyUtils = requireForNodePty(utilsPath) as {
+      loadNativeModule?: (name: string) => { dir: string; module: unknown };
+    };
+    if (typeof nodePtyUtils?.loadNativeModule === "function") {
+      const originalLoadNativeModule = nodePtyUtils.loadNativeModule;
+      nodePtyUtils.loadNativeModule = function (name: string) {
+        try {
+          return originalLoadNativeModule.apply(this, arguments as unknown as [string]);
+        } catch (error) {
+          const platform = process.platform;
+          const arch = process.arch;
+          const bundledCandidates = [
+            nodePath.resolve(
+              import.meta.dirname,
+              "prebuilds",
+              `${platform}-${arch}`,
+              `${name}.node`,
+            ),
+            nodePath.resolve(
+              import.meta.dirname,
+              "../prebuilds",
+              `${platform}-${arch}`,
+              `${name}.node`,
+            ),
+          ];
+          for (const candidate of bundledCandidates) {
+            if (nodeFs.existsSync(candidate)) {
+              return {
+                dir: nodePath.dirname(candidate) + "/",
+                module: requireForNodePty(candidate),
+              };
+            }
+          }
+          throw error;
+        }
+      };
+    }
+  } catch {
+    // If resolving or hooking utils.js fails, proceed with standard import
+  }
+  return import("node-pty");
+};
 
 let didEnsureSpawnHelperExecutable = false;
 
@@ -114,7 +163,7 @@ class NodePtyProcess implements PtyAdapter.PtyProcess {
 }
 
 export const make = Effect.fn("NodePtyAdapter.make")(function* (
-  loadNodePtyModule: NodePtyModuleLoader = () => import("node-pty"),
+  loadNodePtyModule: NodePtyModuleLoader = defaultLoadNodePtyModule,
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
