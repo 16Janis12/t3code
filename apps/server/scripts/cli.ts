@@ -36,6 +36,7 @@ interface PackageJson {
     url: string;
     directory: string;
   };
+  publishConfig?: Record<string, string> | undefined;
   bin: Record<string, string>;
   type: string;
   version: string;
@@ -190,7 +191,7 @@ const createVpPmPublishArgs = (config: PublishCommandConfig): ReadonlyArray<stri
   const args = [
     "publish",
     "--filter",
-    "t3",
+    serverPackageJson.name,
     "--access",
     config.access,
     "--tag",
@@ -244,6 +245,7 @@ const publishCmd = Command.make(
           const pkg: PackageJson = {
             name: serverPackageJson.name,
             repository: serverPackageJson.repository,
+            ...(serverPackageJson.publishConfig ? { publishConfig: serverPackageJson.publishConfig } : {}),
             bin: serverPackageJson.bin,
             type: serverPackageJson.type,
             version,

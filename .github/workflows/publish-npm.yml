@@ -1,0 +1,86 @@
+name: Publish Package to GitHub Packages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: publish-gh-packages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Build & Publish Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          registry-url: https://npm.pkg.github.com
+          scope: "@16janis12"
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: |
+            args:
+              - --filter=@16janis12/t3...
+              - --filter=@t3tools/web...
+              - --filter=@t3tools/scripts...
+
+      - name: Configure npm authentication
+        run: |
+          echo "@16janis12:registry=https://npm.pkg.github.com" > ~/.npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> ~/.npmrc
+          echo "@16janis12:registry=https://npm.pkg.github.com" > apps/server/.npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> apps/server/.npmrc
+
+      - name: Determine publish version
+        id: version
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PKG_NAME="$(node -p 'require("./apps/server/package.json").name')"
+          BASE_VERSION="$(node -p 'require("./apps/server/package.json").version')"
+          # Check if the base version is already published on GitHub Packages
+          if npm view "${PKG_NAME}@${BASE_VERSION}" version --registry https://npm.pkg.github.com >/dev/null 2>&1; then
+            DATE_STAMP="$(date -u +%Y%m%d%H%M%S)"
+            TARGET_VERSION="${BASE_VERSION}-main.${DATE_STAMP}.${{ github.run_number }}"
+            echo "Version ${BASE_VERSION} already exists on GitHub Packages; using ${TARGET_VERSION}"
+          else
+            TARGET_VERSION="${BASE_VERSION}"
+            echo "Publishing initial version: ${TARGET_VERSION}"
+          fi
+          echo "version=${TARGET_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Update package versions
+        run: node scripts/update-release-package-versions.ts "${{ steps.version.outputs.version }}"
+
+      - name: Build server and web assets
+        run: vp run --filter @16janis12/t3 build
+
+      - name: Publish package to GitHub Packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node apps/server/scripts/cli.ts publish \
+            --tag latest \
+            --app-version "${{ steps.version.outputs.version }}" \
+            --verbose
