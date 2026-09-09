@@ -1,9 +1,11 @@
+import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import {
   AntigravitySettings,
   ApprovalRequestId,
   ProviderInstanceId,
+  EnvironmentId,
   ThreadId,
   type ProviderRuntimeEvent,
 } from "@t3tools/contracts";
@@ -1269,6 +1271,43 @@ it.layer(layer)("AntigravityAdapter", (it) => {
       }).pipe(Effect.flip);
       expect(missing._tag).toBe("AcpRequestError");
     }).pipe(Effect.scoped),
+  );
+
+  it.effect("forwards external MCP servers from McpProviderSession to makeRuntime", () =>
+    Effect.gen(function* () {
+      const threadIdForMcp = ThreadId.make("thread-mcp-test");
+      McpProviderSession.setMcpProviderSession({
+        environmentId: EnvironmentId.make("default"),
+        threadId: threadIdForMcp,
+        providerSessionId: "session-mcp",
+        providerInstanceId: ProviderInstanceId.make("antigravity-default"),
+        externalServers: {
+          myServer: {
+            command: "node",
+            args: ["my-server.js"],
+            env: { KEY: "VAL" },
+          },
+        },
+      });
+
+      const harness = yield* makeHarness();
+
+      yield* harness.adapter.startSession({
+        threadId: threadIdForMcp,
+        cwd: process.cwd(),
+        runtimeMode: "approval-required",
+      });
+
+      expect(harness.launches[0]?.mcpServers).toEqual([
+        {
+          name: "myServer",
+          command: "node",
+          args: ["my-server.js"],
+          env: [{ name: "KEY", value: "VAL" }],
+        },
+      ]);
+      McpProviderSession.clearMcpProviderSession(threadIdForMcp);
+    }),
   );
 
   it.effect("does not launch a process for a disabled instance or invalid resume cursor", () =>

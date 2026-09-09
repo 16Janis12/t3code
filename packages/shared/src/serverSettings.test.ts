@@ -17,6 +17,7 @@ import {
   parsePersistedServerObservabilitySettings,
   resolveSourceControlWriterModelSelection,
   resolveProjectAgentBrowserAccess,
+  resolveProjectMcpServerEnabled,
   resolveProjectAutoPull,
 } from "./serverSettings.ts";
 
@@ -716,5 +717,53 @@ describe("serverSettings helpers", () => {
     });
 
     expect(resolved.pauseWhenOnBattery).toBe(false);
+  });
+});
+
+describe("applyServerSettingsPatch MCP servers", () => {
+  it("upserts and deletes global mcpServers", () => {
+    const s1 = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      mcpServers: {
+        serverA: { command: "node", args: ["server.js"] },
+        serverB: { type: "http", url: "https://mcp.test" },
+      },
+    });
+    expect(Object.keys(s1.mcpServers)).toEqual(["serverA", "serverB"]);
+
+    const s2 = applyServerSettingsPatch(s1, {
+      mcpServers: {
+        serverB: null,
+        serverC: { command: "python", args: ["-m", "mcp"] },
+      },
+    });
+    expect(Object.keys(s2.mcpServers)).toEqual(["serverA", "serverC"]);
+  });
+
+  it("upserts, overrides, and deletes projectMcpServerOverrides", () => {
+    const proj1 = ProjectId.make("p1");
+    const proj2 = ProjectId.make("p2");
+
+    const s1 = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      projectMcpServerOverrides: {
+        [proj1]: { serverA: false, serverB: true },
+        [proj2]: { serverA: false },
+      },
+    });
+
+    expect(resolveProjectMcpServerEnabled(s1, proj1, "serverA", true)).toBe(false);
+    expect(resolveProjectMcpServerEnabled(s1, proj1, "serverB", false)).toBe(true);
+    expect(resolveProjectMcpServerEnabled(s1, proj1, "serverC", true)).toBe(true);
+    expect(resolveProjectMcpServerEnabled(s1, proj2, "serverA", true)).toBe(false);
+
+    // Delete proj2 override and update proj1 serverA
+    const s2 = applyServerSettingsPatch(s1, {
+      projectMcpServerOverrides: {
+        [proj1]: { serverA: true },
+        [proj2]: null,
+      },
+    });
+
+    expect(resolveProjectMcpServerEnabled(s2, proj1, "serverA", false)).toBe(true);
+    expect(s2.projectMcpServerOverrides[proj2]).toBeUndefined();
   });
 });

@@ -35,6 +35,7 @@ import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
+import { toOpenCodeMcpServers } from "../../mcp/McpServerResolver.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import {
   ProviderAdapterProcessError,
@@ -2841,19 +2842,27 @@ export function makeOpenCodeAdapter(
               });
               const mcpSession = McpProviderSession.readMcpProviderSession(input.threadId);
               if (mcpSession && !server.external) {
-                yield* runOpenCodeSdk("mcp.add", () =>
-                  client.mcp.add({
-                    name: "t3-code",
-                    config: {
-                      type: "remote",
-                      url: mcpSession.endpoint,
-                      headers: {
-                        Authorization: mcpSession.authorizationHeader,
+                if (mcpSession.endpoint && mcpSession.authorizationHeader) {
+                  yield* runOpenCodeSdk("mcp.add", () =>
+                    client.mcp.add({
+                      name: "t3-code",
+                      config: {
+                        type: "remote",
+                        url: mcpSession.endpoint!,
+                        headers: {
+                          Authorization: mcpSession.authorizationHeader!,
+                        },
+                        oauth: false,
                       },
-                      oauth: false,
-                    },
-                  }),
-                );
+                    }),
+                  );
+                }
+                if (mcpSession.externalServers) {
+                  const externalOpenCode = toOpenCodeMcpServers(mcpSession.externalServers);
+                  for (const ext of externalOpenCode) {
+                    yield* runOpenCodeSdk("mcp.add", () => client.mcp.add(ext));
+                  }
+                }
               }
               // Resume: re-adopt the session named by the durable cursor —
               // OpenCode scopes history by session id. The probe recovers only

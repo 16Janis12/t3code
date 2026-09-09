@@ -24,6 +24,19 @@ import {
 const ServerSettingsJson = fromLenientJson(ServerSettings);
 const decodeServerSettingsJson = Schema.decodeUnknownOption(ServerSettingsJson);
 
+export function resolveProjectMcpServerEnabled(
+  settings: Pick<ServerSettings, "enableProjectMcpServers" | "projectMcpServerOverrides">,
+  projectId: ProjectId,
+  serverName: string,
+  defaultEnabled: boolean = true,
+): boolean {
+  const projectOverrides = settings.projectMcpServerOverrides[projectId];
+  if (projectOverrides && projectOverrides[serverName] !== undefined) {
+    return projectOverrides[serverName];
+  }
+  return defaultEnabled;
+}
+
 export function resolveProjectAgentBrowserAccess(
   settings: Pick<ServerSettings, "enableAgentBrowserAccess" | "projectAgentBrowserAccessOverrides">,
   projectId: ProjectId,
@@ -175,6 +188,8 @@ export function applyServerSettingsPatch(
     usagePriceOverrides: usagePriceOverridesPatch,
     projectAgentBrowserAccessOverrides: projectAgentBrowserAccessOverridesPatch,
     projectAutoPullOverrides: projectAutoPullOverridesPatch,
+    mcpServers: mcpServersPatch,
+    projectMcpServerOverrides: projectMcpServerOverridesPatch,
     ...patchForMerge
   } = patch;
   const currentBackgroundActivity = normalizeServerBackgroundActivitySettings(current);
@@ -245,6 +260,31 @@ export function applyServerSettingsPatch(
             current.projectAutoPullOverrides,
             projectAutoPullOverridesPatch,
           ),
+        }
+      : {}),
+    ...(mcpServersPatch !== undefined
+      ? {
+          mcpServers: mergeSettingsEntries(current.mcpServers ?? {}, mcpServersPatch),
+        }
+      : {}),
+    ...(projectMcpServerOverridesPatch !== undefined
+      ? {
+          projectMcpServerOverrides: (() => {
+            const currentOverrides = current.projectMcpServerOverrides ?? {};
+            const nextOverrides = new Map(Object.entries(currentOverrides));
+            for (const [projId, serverMap] of Object.entries(projectMcpServerOverridesPatch)) {
+              if (serverMap === null) {
+                nextOverrides.delete(projId);
+              } else {
+                const currentServerMap = (currentOverrides as Record<string, Record<string, boolean>>)[projId] ?? {};
+                nextOverrides.set(
+                  projId,
+                  mergeSettingsEntries(currentServerMap, serverMap),
+                );
+              }
+            }
+            return Object.fromEntries(nextOverrides);
+          })(),
         }
       : {}),
     ...(patch.defaultModelSelection !== undefined

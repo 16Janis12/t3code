@@ -98,6 +98,7 @@ import {
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { BrowserImportWizard, type WizardTarget } from "./BrowserImportWizard";
+import { McpSettingsSection } from "./McpSettings";
 import type { ImportOutcome } from "./browserImportWizard.logic";
 
 const FILL_VALUE = "fill";
@@ -1170,6 +1171,7 @@ export function IntegrationsSettingsPanel() {
           previewDefaults
         )}
       </SettingsSection>
+      <McpSettingsSection />
     </SettingsPageContainer>
   );
 }
