@@ -541,7 +541,7 @@ it.layer(layer)("AntigravityAdapter", (it) => {
         })
         .pipe(Effect.forkChild);
       const opened = yield* h.waitForEvent((event) => event.type === "user-input.requested");
-      expect(opened.payload.questions[0]?.allowCustomAnswer).toBe(false);
+      expect(opened.payload.questions[0]?.allowCustomAnswer).toBe(true);
       expect(opened.payload.questions[0]?.options.map((option) => option.value)).toEqual([
         "choice:a",
         "choice:b",
@@ -558,6 +558,40 @@ it.layer(layer)("AntigravityAdapter", (it) => {
       });
       expect(yield* Fiber.join(question)).toEqual({
         outcome: { outcome: "selected", optionId: "choice:b" },
+      });
+    }),
+  );
+
+  it.effect("accepts custom answers for native questions and requests a follow-up steer turn", () =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness();
+      yield* h.adapter.startSession({ threadId, cwd: process.cwd(), runtimeMode: "full-access" });
+      const question = yield* h
+        .invokePermission({
+          sessionId: nativeSessionId,
+          toolCall: { toolCallId: "interaction_custom", title: "Choose a plan" },
+          options: [
+            { optionId: "opt_a", name: "Option A", kind: "allow_once" },
+            { optionId: "opt_b", name: "Option B", kind: "allow_once" },
+          ],
+        })
+        .pipe(Effect.forkChild);
+      const opened = yield* h.waitForEvent((event) => event.type === "user-input.requested");
+      expect(opened.payload.questions[0]?.allowCustomAnswer).toBe(true);
+      const result = yield* h.adapter.respondToUserInput(
+        threadId,
+        ApprovalRequestId.make(opened.requestId!),
+        {
+          interaction_custom: "I prefer option C with custom details",
+        },
+      );
+      expect(result).toEqual({
+        steerTurn: {
+          text: "I prefer option C with custom details",
+        },
+      });
+      expect(yield* Fiber.join(question)).toEqual({
+        outcome: { outcome: "cancelled" },
       });
     }),
   );

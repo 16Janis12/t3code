@@ -3732,6 +3732,51 @@ describe("ProviderCommandReactor", () => {
     });
   });
 
+  it("starts a steer turn when user input response returns a steer turn", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    harness.respondToUserInput.mockImplementation(() =>
+      Effect.succeed({ steerTurn: { text: "custom write-in answer" } }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-session-set-for-user-input"),
+        threadId: ThreadId.make("thread-1"),
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "running",
+          providerName: "antigravity",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: now,
+        },
+        createdAt: now,
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.user-input.respond",
+        commandId: CommandId.make("cmd-user-input-respond"),
+        threadId: ThreadId.make("thread-1"),
+        requestId: asApprovalRequestId("user-input-request-1"),
+        answers: {
+          choice: "custom write-in answer",
+        },
+        createdAt: now,
+      }),
+    );
+
+    await harness.drain();
+    expect(harness.sendTurn).toHaveBeenCalled();
+    const sendTurnCall = harness.sendTurn.mock.calls[0]?.[0];
+    expect(sendTurnCall?.input).toBe("custom write-in answer");
+  });
+
   it("normalizes stale Codex approval callbacks without faking approval resolution", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";

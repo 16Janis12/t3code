@@ -144,7 +144,7 @@ export function extractAntigravityUserInputQuestion(
         ? copyBoundedText(`${question.slice(0, TOOL_TEXT_LIMIT - 3)}...`)
         : question,
     multiSelect: false,
-    allowCustomAnswer: false,
+    allowCustomAnswer: true,
     options: request.options.map((option) => ({
       value: option.optionId,
       label: questionLabel(option),
@@ -153,7 +153,7 @@ export function extractAntigravityUserInputQuestion(
   };
 }
 
-/** Return undefined for an invalid answer so the adapter keeps the question open. */
+/** Return undefined for an invalid answer structure so the adapter keeps the question open. */
 export function makeAntigravityUserInputResponse(
   request: EffectAcpSchema.RequestPermissionRequest,
   answers: ProviderUserInputAnswers,
@@ -171,8 +171,24 @@ export function makeAntigravityUserInputResponse(
     return { outcome: { outcome: "selected", optionId: exact.optionId } };
   }
   const matchingLabels = request.options.filter((option) => questionLabel(option) === value);
-  const option = matchingLabels.length === 1 ? matchingLabels[0] : undefined;
-  return option ? { outcome: { outcome: "selected", optionId: option.optionId } } : undefined;
+  if (matchingLabels.length === 1 && matchingLabels[0]) {
+    return { outcome: { outcome: "selected", optionId: matchingLabels[0].optionId } };
+  }
+  const firstLine = value.split("\n")[0]?.trim();
+  if (firstLine && firstLine !== value) {
+    const lineExact = request.options.find((opt) => opt.optionId === firstLine);
+    if (lineExact) {
+      return { outcome: { outcome: "selected", optionId: lineExact.optionId } };
+    }
+    const lineMatchingLabels = request.options.filter((opt) => questionLabel(opt) === firstLine);
+    if (lineMatchingLabels.length === 1 && lineMatchingLabels[0]) {
+      return { outcome: { outcome: "selected", optionId: lineMatchingLabels[0].optionId } };
+    }
+  }
+  if (matchingLabels.length > 1) {
+    return undefined;
+  }
+  return { outcome: { outcome: "cancelled" } };
 }
 
 function boundText(text: string, limit = TOOL_TEXT_LIMIT): string {
