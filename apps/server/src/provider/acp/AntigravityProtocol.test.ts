@@ -214,7 +214,7 @@ describe("Antigravity permissions and questions", () => {
       header: "Question",
       question: "Which result label should be used for the verification?",
       multiSelect: false,
-      allowCustomAnswer: false,
+      allowCustomAnswer: true,
       options: [
         { value: "1", label: "Verified", description: "Verified" },
         { value: "2", label: "Needs review", description: "Needs review" },
@@ -264,14 +264,36 @@ describe("Antigravity permissions and questions", () => {
     });
   });
 
-  it.each([undefined, null, "", "arbitrary answer", [], ["1", "2"], { answer: "1" }, 1])(
-    "keeps the question open for an unsupported answer: %j",
+  it.each([undefined, null, [], ["1", "2"], { answer: "1" }, 1])(
+    "keeps the question open for an unsupported answer structure: %j",
     (answer) => {
       expect(
         makeAntigravityUserInputResponse(questionRequest, { interaction_9960062f: answer }),
       ).toBeUndefined();
     },
   );
+
+  it.each(["", "arbitrary answer", "Decline", ["arbitrary answer"]])(
+    "returns cancellation for custom answers, declines, or write-ins: %j",
+    (answer) => {
+      expect(
+        makeAntigravityUserInputResponse(questionRequest, { interaction_9960062f: answer }),
+      ).toEqual({ outcome: { outcome: "cancelled" } });
+    },
+  );
+
+  it("handles option answers with appended extra text or attachments", () => {
+    expect(
+      makeAntigravityUserInputResponse(questionRequest, {
+        interaction_9960062f: "1\n\nAttached image: /path/to/img.png",
+      }),
+    ).toEqual({ outcome: { outcome: "selected", optionId: "1" } });
+    expect(
+      makeAntigravityUserInputResponse(questionRequest, {
+        interaction_9960062f: "Verified\n\nExtra comments",
+      }),
+    ).toEqual({ outcome: { outcome: "selected", optionId: "1" } });
+  });
 
   it("rejects missing or duplicate native option IDs", () => {
     for (const optionId of ["", "1"]) {

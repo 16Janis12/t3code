@@ -1224,11 +1224,31 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
         return yield* new ProviderAdapterValidationError({
           provider: PROVIDER,
           operation: "respondToUserInput",
-          issue:
-            "Select one of Antigravity's offered answers. Custom answers are not supported for this question.",
+          issue: "Select one of Antigravity's offered answers or provide a custom response.",
         });
       }
       yield* Deferred.succeed(pending.response, { answers, result });
+
+      const rawAnswer = answers[pending.request.toolCall.toolCallId];
+      const text =
+        typeof rawAnswer === "string"
+          ? rawAnswer.trim()
+          : Array.isArray(rawAnswer)
+            ? rawAnswer.join("\n").trim()
+            : "";
+
+      if (result.outcome.outcome === "cancelled") {
+        if (text.length > 0) {
+          return { steerTurn: { text } };
+        }
+        return;
+      }
+
+      const firstLine = text.split("\n")[0]?.trim();
+      const remainder = firstLine ? text.slice(firstLine.length).trim() : "";
+      if (remainder.length > 0) {
+        return { steerTurn: { text: remainder } };
+      }
     });
 
   const stopSession: Adapter["stopSession"] = (threadId) =>

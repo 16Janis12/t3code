@@ -2,6 +2,7 @@ import {
   type ChatAttachment,
   CommandId,
   EventId,
+  MessageId,
   type ModelSelection,
   type OrchestrationEvent,
   ProviderDriverKind,
@@ -1604,7 +1605,7 @@ const make = Effect.gen(function* () {
         });
       }
 
-      yield* providerService
+      const responseResult = yield* providerService
         .respondToUserInput({
           threadId: event.payload.threadId,
           requestId: event.payload.requestId,
@@ -1628,6 +1629,34 @@ const make = Effect.gen(function* () {
             }),
           ),
         );
+
+      if (responseResult && responseResult.steerTurn) {
+        const { text } = responseResult.steerTurn;
+        const attachments =
+          responseResult.steerTurn.attachments ??
+          (event.payload.attachmentsByQuestionId
+            ? Object.values(event.payload.attachmentsByQuestionId).flat()
+            : []);
+        if (text.trim().length > 0 || attachments.length > 0) {
+          const messageId = yield* crypto.randomUUIDv4.pipe(
+            Effect.map((uuid) => MessageId.make(`server:user-input-steer:${uuid}`)),
+          );
+          yield* orchestrationEngine.dispatch({
+            type: "thread.turn.start",
+            commandId: yield* serverCommandId("user-input-steer-turn"),
+            threadId: event.payload.threadId,
+            createdAt: event.payload.createdAt,
+            runtimeMode: thread.runtimeMode,
+            interactionMode: thread.interactionMode,
+            message: {
+              messageId,
+              role: "user",
+              text,
+              attachments: [...attachments],
+            },
+          });
+        }
+      }
     },
   );
 

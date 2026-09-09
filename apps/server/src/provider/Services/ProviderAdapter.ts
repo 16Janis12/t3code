@@ -9,6 +9,7 @@
  */
 import type {
   ApprovalRequestId,
+  ChatAttachment,
   ProviderApprovalDecision,
   ProviderDriverKind,
   ProviderUserInputAnswers,
@@ -64,6 +65,13 @@ export interface ProviderThreadSnapshot {
   readonly turns: ReadonlyArray<ProviderThreadTurnSnapshot>;
 }
 
+export interface ProviderUserInputResponseResult {
+  readonly steerTurn?: {
+    readonly text: string;
+    readonly attachments?: ReadonlyArray<ChatAttachment>;
+  };
+}
+
 export interface ProviderAdapterShape<TError> {
   /**
    * Provider kind implemented by this adapter.
@@ -109,7 +117,7 @@ export interface ProviderAdapterShape<TError> {
     threadId: ThreadId,
     requestId: ApprovalRequestId,
     answers: ProviderUserInputAnswers,
-  ) => Effect.Effect<void, TError>;
+  ) => Effect.Effect<ProviderUserInputResponseResult | void, TError>;
 
   /**
    * Stop one provider session.

@@ -909,9 +909,9 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       let projectId: ProjectId | undefined;
       let workspaceRoot: string | undefined;
       if (Option.isSome(projectionQuery)) {
-        const thread = yield* projectionQuery.value.getThreadShellById(threadId).pipe(
-          Effect.catch(() => Effect.succeed(Option.none())),
-        );
+        const thread = yield* projectionQuery.value
+          .getThreadShellById(threadId)
+          .pipe(Effect.catch(() => Effect.succeed(Option.none())));
         if (Option.isSome(thread)) {
           projectId = thread.value.projectId;
           if (thread.value.worktreePath) {
@@ -943,7 +943,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       const sessionConfig: McpProviderSession.McpProviderSessionConfig = {
         environmentId: credential?.config.environmentId ?? EnvironmentId.make("default"),
         threadId,
-        providerSessionId: credential?.config.providerSessionId ?? (`mcp-${threadId}`),
+        providerSessionId: credential?.config.providerSessionId ?? `mcp-${threadId}`,
         providerInstanceId,
         ...(credential?.config.endpoint ? { endpoint: credential.config.endpoint } : {}),
         ...(credential?.config.authorizationHeader
@@ -1971,7 +1971,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         ...input,
         attachmentsDir: serverConfig.attachmentsDir,
       }).pipe(Effect.provideService(FileSystem.FileSystem, fileSystem));
-      yield* routed.adapter.respondToUserInput(routed.threadId, input.requestId, answers);
+      return yield* routed.adapter.respondToUserInput(routed.threadId, input.requestId, answers);
     }).pipe(
       withMetrics({
         counter: providerTurnsTotal,
