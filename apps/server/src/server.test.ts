@@ -5315,6 +5315,62 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("routes websocket rpc issues.list without crashing", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const error = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) => client[WS_METHODS.issuesList]({})),
+      ).pipe(Effect.flip);
+
+      assert.equal(error._tag, "IssueRpcError");
+      assert.include(error.message, "No matching project found");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc issues.list with project", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        layers: {
+          projectionSnapshotQuery: {
+            getShellSnapshot: () =>
+              Effect.succeed({
+                snapshotSequence: 0,
+                projects: [
+                  {
+                    id: ProjectId.make("proj-1"),
+                    title: "Test Project",
+                    workspaceRoot: process.cwd(),
+                    repositoryIdentity: {
+                      canonicalKey: "github.com/16Janis12/t3code",
+                      locator: "github.com/16Janis12/t3code",
+                      owner: "16Janis12",
+                      name: "t3code",
+                    },
+                    scripts: [],
+                    createdAt: "2026-01-01T00:00:00.000Z",
+                    updatedAt: "2026-01-01T00:00:00.000Z",
+                  } as any,
+                ],
+                threads: [],
+                updatedAt: "2026-01-01T00:00:00.000Z",
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) => client[WS_METHODS.issuesList]({})),
+      );
+
+      assert.isDefined(response);
+      assert.equal(response.repository, "16Janis12/t3code");
+      assert.isArray(response.issues);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("routes websocket rpc server.removeKeybinding", () =>
     Effect.gen(function* () {
       const rule: KeybindingRule = {

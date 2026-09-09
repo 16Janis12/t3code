@@ -118,7 +118,7 @@ function normalizeComments(raw?: ReadonlyArray<GhRawComment>): ReadonlyArray<Iss
 function normalizeListItem(raw: GhRawIssue, projectId?: ProjectId, repo?: string): IssueListItem {
   return {
     id: raw.id ?? `issue-${raw.number}`,
-    number: raw.number ?? 0,
+    number: raw.number && raw.number > 0 ? raw.number : 1,
     title: raw.title ?? "",
     state: normalizeState(raw.state),
     url: raw.url ?? "",
@@ -138,7 +138,7 @@ function normalizeDetail(raw: GhRawIssue, projectId?: ProjectId, repo?: string):
   const comments = normalizeComments(raw.comments);
   return {
     id: raw.id ?? `issue-${raw.number}`,
-    number: raw.number ?? 0,
+    number: raw.number && raw.number > 0 ? raw.number : 1,
     title: raw.title ?? "",
     state: normalizeState(raw.state),
     url: raw.url ?? "",
@@ -164,7 +164,7 @@ export const layer = Layer.effect(
 
     const resolveProject = (projectId?: ProjectId) =>
       Effect.gen(function* () {
-        const snapshot = yield* projectionSnapshotQuery.getSnapshot.pipe(
+        const snapshot = yield* projectionSnapshotQuery.getShellSnapshot().pipe(
           Effect.mapError(
             (err) =>
               new IssueRpcError({
@@ -240,7 +240,10 @@ export const layer = Layer.effect(
         let parsed: ReadonlyArray<GhRawIssue> = [];
         if (stdout.length > 0) {
           try {
-            parsed = JSON.parse(stdout);
+            const raw = JSON.parse(stdout);
+            if (Array.isArray(raw)) {
+              parsed = raw;
+            }
           } catch (err) {
             return yield* Effect.fail(
               new IssueRpcError({
