@@ -162,3 +162,34 @@ export function buildSidebarProjectPickerEntries(input: {
     ...entries.slice(preferredIndex + 1),
   ];
 }
+
+/**
+ * Resolves a Project from a sidebar project scope key.
+ * If the scope key matches a project group, returns the preferred member
+ * (matching preferredEnvironmentId) or first member.
+ */
+export function resolveProjectFromScopeKey(input: {
+  projects: ReadonlyArray<Project>;
+  scopeKey: string | null | undefined;
+  settings: ProjectGroupingSettings;
+  primaryEnvironmentId?: EnvironmentId | null;
+}): Project | null {
+  if (!input.scopeKey) {
+    return null;
+  }
+  const groups = buildProjectGroups({
+    projects: input.projects,
+    settings: input.settings,
+    preferredEnvironmentId: input.primaryEnvironmentId ?? null,
+  });
+  const matchingGroup = groups.find((group) => group.key === input.scopeKey);
+  if (!matchingGroup || matchingGroup.members.length === 0) {
+    return null;
+  }
+  const preferredMember = matchingGroup.members.find(
+    (member) =>
+      input.primaryEnvironmentId != null &&
+      member.project.environmentId === input.primaryEnvironmentId,
+  );
+  return preferredMember?.project ?? matchingGroup.members[0]?.project ?? null;
+}

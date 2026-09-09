@@ -9,9 +9,14 @@ import type { ReactNode } from "react";
 import { memo, useCallback } from "react";
 import { Link, useCanGoBack, useLocation, useNavigate } from "@tanstack/react-router";
 
-import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
+import { useActiveProjectTarget } from "../../hooks/useActiveProjectTarget";
+import { useClientSettings, useEnvironmentIdentificationMode } from "../../hooks/useSettings";
+import { selectProjectGroupingSettings } from "../../logicalProject";
 import { cn } from "../../lib/utils";
-import { useEnvironments } from "../../state/environments";
+import { resolveProjectFromScopeKey } from "../../sidebarProjectGrouping";
+import { useProjects } from "../../state/entities";
+import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environments";
+import { useUiStateStore } from "../../uiStateStore";
 import { T3Wordmark } from "../T3Wordmark";
 import {
   resolveEnvironmentIdentificationPillLabel,
@@ -151,6 +156,12 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
                 : null,
   });
   const { environments } = useEnvironments();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const projects = useProjects();
+  const activeTarget = useActiveProjectTarget();
+  const sidebarProjectScopeKey = useUiStateStore((store) => store.sidebarProjectScopeKey);
+  const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
+
   // The page reads every connected server, so one of them offering pull requests is enough for
   // the link to lead somewhere.
   const pullRequestsSupported = environments.some(
@@ -173,10 +184,41 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   }, [closeMobileSidebar, navigate]);
   const handleIssuesClick = useCallback(() => {
     closeMobileSidebar();
-    void navigate({
-      to: "/issues",
-    });
-  }, [closeMobileSidebar, navigate]);
+    const activeProject = activeTarget
+      ? projects.find(
+          (p) => p.id === activeTarget.projectId && p.environmentId === activeTarget.environmentId,
+        )
+      : undefined;
+    const targetProject =
+      activeProject ??
+      resolveProjectFromScopeKey({
+        projects,
+        scopeKey: sidebarProjectScopeKey,
+        settings: projectGroupingSettings,
+        primaryEnvironmentId,
+      });
+    if (targetProject) {
+      void navigate({
+        to: "/issues",
+        search: {
+          projectId: targetProject.id,
+          environmentId: targetProject.environmentId,
+        },
+      });
+    } else {
+      void navigate({
+        to: "/issues",
+      });
+    }
+  }, [
+    activeTarget,
+    closeMobileSidebar,
+    navigate,
+    primaryEnvironmentId,
+    projectGroupingSettings,
+    projects,
+    sidebarProjectScopeKey,
+  ]);
   const handleSettingsClick = useCallback(() => {
     closeMobileSidebar();
     void navigate({ to: "/settings" });
