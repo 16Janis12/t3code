@@ -742,3 +742,58 @@ describe("ServerSettings environment icon", () => {
     expect(encodeServerSettings(linuxSettings).environmentIcon).toBe("linux");
   });
 });
+
+describe("ServerSettings MCP configuration", () => {
+  it("defaults mcpServers to empty, enableProjectMcpServers to true, and projectMcpServerOverrides to empty", () => {
+    const settings = decodeServerSettings({});
+    expect(settings.mcpServers).toEqual({});
+    expect(settings.enableProjectMcpServers).toBe(true);
+    expect(settings.projectMcpServerOverrides).toEqual({});
+  });
+
+  it("decodes and encodes server settings with MCP servers", () => {
+    const raw = {
+      mcpServers: {
+        github: {
+          type: "stdio",
+          command: "npx",
+          args: ["-y", "@modelcontextprotocol/server-github"],
+        },
+        docs: {
+          type: "http",
+          url: "https://docs.example.com/mcp",
+        },
+      },
+      enableProjectMcpServers: false,
+      projectMcpServerOverrides: {
+        proj_1: {
+          github: false,
+        },
+      },
+    };
+    const settings = decodeServerSettings(raw);
+    expect(settings.mcpServers).toEqual(raw.mcpServers);
+    expect(settings.enableProjectMcpServers).toBe(false);
+    expect(settings.projectMcpServerOverrides).toEqual(raw.projectMcpServerOverrides);
+    expect(encodeServerSettings(settings).mcpServers).toEqual(raw.mcpServers);
+  });
+
+  it("decodes patch with MCP server deletions and overrides", () => {
+    const patch = decodeServerSettingsPatch({
+      mcpServers: {
+        github: null,
+      },
+      enableProjectMcpServers: true,
+      projectMcpServerOverrides: {
+        proj_1: {
+          github: true,
+        },
+      },
+    });
+    expect(patch.mcpServers).toEqual({ github: null });
+    expect(patch.enableProjectMcpServers).toBe(true);
+    expect(patch.projectMcpServerOverrides).toEqual({
+      proj_1: { github: true },
+    });
+  });
+});

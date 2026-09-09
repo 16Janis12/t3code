@@ -562,6 +562,20 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "mcp-servers",
+    title: "Model Context Protocol (MCP)",
+    to: "/settings/integrations",
+    targetId: "mcp",
+    searchTerms: ["mcp tools model context protocol external stdio sse http servers json"],
+  },
+  {
+    id: "project-mcp-servers",
+    title: "Project MCP servers",
+    to: "/settings/integrations",
+    targetId: "mcp",
+    searchTerms: ["project mcp servers .mcp.json auto detection"],
+  },
+  {
     id: "archive",
     title: "Archived threads",
     to: "/settings/archived",

@@ -17,6 +17,8 @@ import {
   ProviderInterruptTurnInput,
   ProviderRespondToRequestInput,
   ProviderRespondToUserInputInput,
+  DEFAULT_SERVER_SETTINGS,
+  EnvironmentId,
   RuntimeRequestId,
   ProviderSendTurnInput,
   type ChatImageAttachment,
@@ -28,6 +30,7 @@ import {
   ProviderUploadFeedbackInput,
   ThreadId,
   TurnId,
+  type ProjectId,
   type ProviderInstanceId,
   type ProviderDriverKind,
   type ProviderRuntimeEvent,
@@ -77,6 +80,7 @@ import * as ProviderEventLoggers from "./ProviderEventLoggers.ts";
 import * as AnalyticsService from "../../telemetry/AnalyticsService.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import * as McpSessionRegistry from "../../mcp/McpSessionRegistry.ts";
+import { resolveActiveMcpServers } from "../../mcp/McpServerResolver.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 import * as ProjectionSnapshotQuery from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 const isModelSelection = Schema.is(ModelSelection);
@@ -891,21 +895,64 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
 
   const prepareMcpSession = (threadId: ThreadId, providerInstanceId: ProviderInstanceId) =>
     Effect.gen(function* () {
-      if (!(yield* agentBrowserAccessEnabled(threadId))) {
-        // Revoke as well as clear. Every other prepare path reaches
-        // `issueActiveMcpCredential`, which revokes the thread first, so
-        // skipping it here would leave a previously issued bearer token valid
-        // against `/mcp` for the rest of its liveness window — and later turns
-        // would keep refreshing it. A session restart (runtime mode, cwd,
-        // model) re-prepares without stopping, so it relies on this.
+      const browserAccess = yield* agentBrowserAccessEnabled(threadId);
+      let credential: { config: McpProviderSession.McpProviderSessionConfig } | undefined;
+      if (!browserAccess) {
         yield* revokeMcpCredential(threadId);
+      } else {
+        credential = yield* issueMcpCredential({ threadId, providerInstanceId });
+      }
+
+      const settings = yield* serverSettings.getSettings.pipe(
+        Effect.catch(() => Effect.succeed(DEFAULT_SERVER_SETTINGS)),
+      );
+      let projectId: ProjectId | undefined;
+      let workspaceRoot: string | undefined;
+      if (Option.isSome(projectionQuery)) {
+        const thread = yield* projectionQuery.value.getThreadShellById(threadId).pipe(
+          Effect.catch(() => Effect.succeed(Option.none())),
+        );
+        if (Option.isSome(thread)) {
+          projectId = thread.value.projectId;
+          if (thread.value.worktreePath) {
+            workspaceRoot = thread.value.worktreePath;
+          } else {
+            const project = yield* projectionQuery.value
+              .getProjectShellById(thread.value.projectId)
+              .pipe(Effect.catch(() => Effect.succeed(Option.none())));
+            if (Option.isSome(project)) {
+              workspaceRoot = project.value.workspaceRoot;
+            }
+          }
+        }
+      }
+
+      const externalServers = resolveActiveMcpServers({
+        projectId,
+        workspaceRoot,
+        settings,
+      });
+
+      const hasExternal = Object.keys(externalServers).length > 0;
+
+      if (!browserAccess && !hasExternal) {
         yield* Effect.sync(() => McpProviderSession.clearMcpProviderSession(threadId));
         return undefined;
       }
-      const credential = yield* issueMcpCredential({ threadId, providerInstanceId });
-      if (credential) {
-        yield* Effect.sync(() => McpProviderSession.setMcpProviderSession(credential.config));
-      }
+
+      const sessionConfig: McpProviderSession.McpProviderSessionConfig = {
+        environmentId: credential?.config.environmentId ?? EnvironmentId.make("default"),
+        threadId,
+        providerSessionId: credential?.config.providerSessionId ?? (`mcp-${threadId}`),
+        providerInstanceId,
+        ...(credential?.config.endpoint ? { endpoint: credential.config.endpoint } : {}),
+        ...(credential?.config.authorizationHeader
+          ? { authorizationHeader: credential.config.authorizationHeader }
+          : {}),
+        ...(hasExternal ? { externalServers } : {}),
+      };
+
+      yield* Effect.sync(() => McpProviderSession.setMcpProviderSession(sessionConfig));
       return credential;
     });
   const clearMcpSession = (threadId: ThreadId) =>

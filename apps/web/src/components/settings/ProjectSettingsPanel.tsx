@@ -34,7 +34,7 @@ import {
   resolveProjectScripts,
 } from "@t3tools/shared/projectScripts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, Link } from "@tanstack/react-router";
 import * as Equal from "effect/Equal";
 import * as Cause from "effect/Cause";
 import { ChevronDownIcon, PlusIcon, Trash2Icon } from "lucide-react";
@@ -1237,6 +1237,19 @@ function ProjectDetail({
                   <SelectItem value="disabled">Off</SelectItem>
                 </SelectPopup>
               </Select>
+            }
+          />
+          <SettingsRow
+            title="Project MCP servers"
+            description="Allow agents to discover and connect to external MCP servers defined in .mcp.json."
+            control={
+              <Button
+                render={<Link to="/settings/integrations" />}
+                size="sm"
+                variant="outline"
+              >
+                MCP settings
+              </Button>
             }
           />
         </SettingsSection>

@@ -33,6 +33,7 @@ import {
   type ProviderDriverKind,
 } from "./providerInstance.ts";
 import { PullRequestMergeMethod } from "./pullRequest.ts";
+import { McpServerConfig } from "./mcp.ts";
 
 // ── Client Settings (local-only) ───────────────────────────────
 
@@ -949,6 +950,13 @@ export const ServerSettings = Schema.Struct({
   projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  mcpServers: Schema.Record(Schema.String, McpServerConfig).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
+  enableProjectMcpServers: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  projectMcpServerOverrides: Schema.Record(ProjectId, Schema.Record(Schema.String, Schema.Boolean)).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
   defaultAutoPull: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   defaultProjectScripts: Schema.Array(ProjectScript).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
@@ -1224,6 +1232,16 @@ export const ServerSettingsPatch = Schema.Struct({
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
   projectAgentBrowserAccessOverrides: Schema.optionalKey(
     Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
+  ),
+  mcpServers: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.NullOr(McpServerConfig)),
+  ),
+  enableProjectMcpServers: Schema.optionalKey(Schema.Boolean),
+  projectMcpServerOverrides: Schema.optionalKey(
+    Schema.Record(
+      ProjectId,
+      Schema.NullOr(Schema.Record(Schema.String, Schema.NullOr(Schema.Boolean))),
+    ),
   ),
   defaultAutoPull: Schema.optionalKey(Schema.Boolean),
   defaultProjectScripts: Schema.optionalKey(Schema.Array(ProjectScript)),

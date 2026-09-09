@@ -44,6 +44,7 @@ import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
+import { toAcpMcpServers } from "../../mcp/McpServerResolver.ts";
 import {
   ProviderAdapterProcessError,
   ProviderAdapterRequestError,
@@ -541,6 +542,23 @@ export function makeCursorAdapter(
             : cursorSettings;
 
           const mcpSession = McpProviderSession.readMcpProviderSession(input.threadId);
+          const mcpServers: EffectAcpSchema.McpServer[] = [];
+          if (mcpSession?.endpoint && mcpSession?.authorizationHeader) {
+            mcpServers.push({
+              type: "http" as const,
+              name: "t3-code",
+              url: mcpSession.endpoint,
+              headers: [
+                {
+                  name: "Authorization",
+                  value: mcpSession.authorizationHeader,
+                },
+              ],
+            });
+          }
+          if (mcpSession?.externalServers) {
+            mcpServers.push(...toAcpMcpServers(mcpSession.externalServers));
+          }
           const acp = yield* makeCursorAcpRuntime({
             cursorSettings: effectiveCursorSettings,
             ...(options?.environment ? { environment: options.environment } : {}),
@@ -549,23 +567,7 @@ export function makeCursorAdapter(
             runtimeMode: input.runtimeMode,
             ...(resumeSessionId ? { resumeSessionId } : {}),
             clientInfo: { name: "t3-code", version: "0.0.0" },
-            ...(mcpSession
-              ? {
-                  mcpServers: [
-                    {
-                      type: "http" as const,
-                      name: "t3-code",
-                      url: mcpSession.endpoint,
-                      headers: [
-                        {
-                          name: "Authorization",
-                          value: mcpSession.authorizationHeader,
-                        },
-                      ],
-                    },
-                  ],
-                }
-              : {}),
+            ...(mcpServers.length > 0 ? { mcpServers } : {}),
             ...acpNativeLoggers,
           }).pipe(
             Effect.provideService(Crypto.Crypto, crypto),

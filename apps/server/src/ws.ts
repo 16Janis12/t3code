@@ -113,6 +113,7 @@ import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
+import { resolveProjectDiscoveredServers } from "./mcp/McpServerResolver.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
 import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/AttachmentUpload.ts";
@@ -2680,6 +2681,29 @@ const makeWsRpcLayer = (
             WS_METHODS.previewAutomationFocusHost,
             previewAutomationBroker.focusHost(input),
             { "rpc.aggregate": "preview-automation" },
+          ),
+        [WS_METHODS.mcpGetProjectServers]: ({ projectId }) =>
+          observeRpcEffect(
+            WS_METHODS.mcpGetProjectServers,
+            Effect.gen(function* () {
+              const settings = yield* serverSettings.getSettings;
+              let workspaceRoot: string | undefined;
+              if (projectId) {
+                const project = yield* projectionSnapshotQuery
+                  .getProjectShellById(projectId)
+                  .pipe(Effect.catch(() => Effect.succeed(Option.none())));
+                if (Option.isSome(project)) {
+                  workspaceRoot = project.value.workspaceRoot;
+                }
+              }
+              const servers = resolveProjectDiscoveredServers({
+                projectId,
+                workspaceRoot,
+                settings,
+              });
+              return { servers };
+            }),
+            { "rpc.aggregate": "mcp" },
           ),
         [WS_METHODS.subscribePreviewEvents]: (_input) =>
           observeRpcStream(WS_METHODS.subscribePreviewEvents, previewManager.events, {
