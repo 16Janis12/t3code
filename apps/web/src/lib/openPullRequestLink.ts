@@ -303,15 +303,16 @@ export function useOpenChangeRequestLink(
         if (!resolvedThreadRef) {
           void navigate({
             to: "/pull-requests",
-            search: (previous) => ({
-              ...previous,
-              involvement: previous.involvement ?? "all",
-              state: previous.state ?? "all",
-              repository: project.repositoryIdentity?.displayName ?? parsed.repository,
-              number: parsed.number,
-              selectedProjectId: project.id,
-              selectedEnvironmentId: project.environmentId,
-            }),
+            search: (previous) =>
+              ({
+                ...previous,
+                involvement: previous.involvement ?? "all",
+                state: previous.state ?? "all",
+                repository: project.repositoryIdentity?.displayName ?? parsed.repository,
+                number: parsed.number,
+                selectedProjectId: project.id,
+                selectedEnvironmentId: project.environmentId,
+              }) as any,
             replace: true,
           });
         }
