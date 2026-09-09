@@ -7,14 +7,16 @@ import type {
   ProjectId,
 } from "@t3tools/contracts";
 import { createFileRoute } from "@tanstack/react-router";
-import { CircleDotIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
+import { ChevronDownIcon, CircleDotIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { CreateIssueDialog } from "~/components/issue/CreateIssueDialog";
 import { IssueDetailPanel } from "~/components/issue/IssueDetailPanel";
 import { IssueList } from "~/components/issue/IssueList";
+import { ProjectFavicon } from "~/components/ProjectFavicon";
 import { Button } from "~/components/ui/button";
+import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "~/components/ui/menu";
 import { SidebarInset } from "~/components/ui/sidebar";
 import {
   WorkspaceBreadcrumb,
@@ -24,12 +26,16 @@ import {
 import { WorkspacePageContainer } from "~/components/WorkspacePageContainer";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
+import { useClientSettings } from "~/hooks/useSettings";
+import { selectProjectGroupingSettings } from "~/logicalProject";
 import { cn } from "~/lib/utils";
+import { resolveProjectFromScopeKey } from "~/sidebarProjectGrouping";
 import { useProjects } from "~/state/entities";
 import { useEnvironments, usePrimaryEnvironmentId } from "~/state/environments";
 import { issueEnvironment } from "~/state/issues";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { useUiStateStore } from "~/uiStateStore";
 
 export interface IssuesSearch {
   readonly state?: IssueListState | undefined;
@@ -63,6 +69,8 @@ function IssuesPage() {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const { environments } = useEnvironments();
   const projects = useProjects();
+  const sidebarProjectScopeKey = useUiStateStore((state) => state.sidebarProjectScopeKey);
+  const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
 
   // Find target environment and project
   const currentEnvironmentId =
@@ -76,12 +84,31 @@ function IssuesPage() {
           (!currentEnvironmentId || p.environmentId === currentEnvironmentId),
       );
       if (found) return found;
+      const foundAnyEnv = projects.find((p) => p.id === searchParams.projectId);
+      if (foundAnyEnv) return foundAnyEnv;
     }
+
+    // Check sidebar project scope if no explicit projectId in search params
+    const scopedProject = resolveProjectFromScopeKey({
+      projects,
+      scopeKey: sidebarProjectScopeKey,
+      settings: projectGroupingSettings,
+      primaryEnvironmentId,
+    });
+    if (scopedProject) return scopedProject;
+
     return (
       projects.find((p) => !currentEnvironmentId || p.environmentId === currentEnvironmentId) ??
       projects[0]
     );
-  }, [projects, searchParams.projectId, currentEnvironmentId]);
+  }, [
+    projects,
+    searchParams.projectId,
+    currentEnvironmentId,
+    sidebarProjectScopeKey,
+    projectGroupingSettings,
+    primaryEnvironmentId,
+  ]);
 
   const stateFilter: IssueListState = searchParams.state ?? "open";
   const searchQuery = searchParams.search ?? "";
@@ -108,11 +135,8 @@ function IssuesPage() {
 
   const issues = listData?.issues ?? [];
 
-  // Selected issue number
-  const selectedNumber = useMemo(() => {
-    if (searchParams.number) return searchParams.number;
-    return issues[0]?.number ?? null;
-  }, [searchParams.number, issues]);
+  // Selected issue number - defaults to null so the empty state is shown until user selects one
+  const selectedNumber = searchParams.number ?? null;
 
   // Detail query atom
   const detailAtom = useMemo(() => {
@@ -148,10 +172,16 @@ function IssuesPage() {
   const updateSearch = useCallback(
     (patch: Partial<IssuesSearch>) => {
       void navigate({
-        search: (prev: IssuesSearch) => ({
-          ...prev,
-          ...patch,
-        }),
+        search: (prev: IssuesSearch) => {
+          const next = { ...prev, ...patch };
+          const cleaned: Partial<IssuesSearch> = {};
+          for (const [k, v] of Object.entries(next)) {
+            if (v !== undefined) {
+              (cleaned as Record<string, unknown>)[k] = v;
+            }
+          }
+          return cleaned as IssuesSearch;
+        },
         replace: true,
       });
     },
@@ -284,7 +314,64 @@ function IssuesPage() {
             <>
               <WorkspaceBreadcrumbSeparator />
               <WorkspaceBreadcrumbItem>
-                <span className="text-muted-foreground text-xs">{activeProject.title}</span>
+                {projects.length > 1 ? (
+                  <Menu>
+                    <MenuTrigger
+                      render={
+                        <button
+                          type="button"
+                          aria-label={`Current project: ${activeProject.title}. Click to switch project`}
+                          className="inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                        />
+                      }
+                    >
+                      <ProjectFavicon project={activeProject} className="size-3.5 shrink-0" />
+                      <span className="max-w-48 truncate font-medium text-foreground">
+                        {activeProject.title}
+                      </span>
+                      <ChevronDownIcon className="size-3 shrink-0 text-muted-foreground/70" />
+                    </MenuTrigger>
+                    <MenuPopup
+                      align="start"
+                      side="bottom"
+                      className="max-h-80 min-w-44 max-w-72 overflow-y-auto"
+                    >
+                      <MenuRadioGroup
+                        value={`${activeProject.environmentId}:${activeProject.id}`}
+                        onValueChange={(value) => {
+                          const selected = projects.find(
+                            (p) => `${p.environmentId}:${p.id}` === value,
+                          );
+                          if (selected) {
+                            updateSearch({
+                              projectId: selected.id,
+                              environmentId: selected.environmentId,
+                              number: undefined,
+                            });
+                          }
+                        }}
+                      >
+                        {projects.map((project) => (
+                          <MenuRadioItem
+                            key={`${project.environmentId}:${project.id}`}
+                            value={`${project.environmentId}:${project.id}`}
+                            className="gap-2 text-xs"
+                          >
+                            <ProjectFavicon project={project} className="size-3.5 shrink-0" />
+                            <span className="truncate">{project.title}</span>
+                          </MenuRadioItem>
+                        ))}
+                      </MenuRadioGroup>
+                    </MenuPopup>
+                  </Menu>
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
+                    <ProjectFavicon project={activeProject} className="size-3.5 shrink-0" />
+                    <span className="max-w-48 truncate font-medium text-foreground">
+                      {activeProject.title}
+                    </span>
+                  </div>
+                )}
               </WorkspaceBreadcrumbItem>
             </>
           ) : null}
