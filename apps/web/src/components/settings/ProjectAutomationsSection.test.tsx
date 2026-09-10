@@ -43,7 +43,7 @@ function createMockEntry(instanceId: string, driver: string) {
     status: "ready",
     auth: { status: "authenticated" },
     checkedAt: "2026-08-28T00:00:00.000Z",
-    models: [{ id: "test-model", name: "Test Model" }],
+    models: [{ slug: "test-model", name: "Test Model", isCustom: false, capabilities: null }],
     slashCommands: [],
     skills: [],
   };
@@ -61,6 +61,7 @@ describe("ProjectAutomationsSection", () => {
           file: { automations: [] },
           scripts: [],
           automations: [],
+          jobs: [],
           rawContents: "{}",
         }}
       />,
@@ -81,6 +82,7 @@ describe("ProjectAutomationsSection", () => {
           file: null,
           scripts: [],
           automations: [],
+          jobs: [],
           rawContents: "{ broken",
         }}
       />,
@@ -148,6 +150,7 @@ describe("ProjectAutomationsSection", () => {
           file: { automations: sampleAutomations },
           scripts: [],
           automations: sampleAutomations,
+          jobs: [],
           rawContents: JSON.stringify({ automations: sampleAutomations }),
         }}
       />,

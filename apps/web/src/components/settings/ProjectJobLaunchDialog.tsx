@@ -3,6 +3,7 @@ import {
   type EnvironmentId,
   type ModelSelection,
   type ProjectId,
+  type ProviderInstanceId,
   type T3ProjectFileJob,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
