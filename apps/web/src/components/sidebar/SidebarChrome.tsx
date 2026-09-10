@@ -10,6 +10,7 @@ import { memo, useCallback } from "react";
 import { Link, useCanGoBack, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { useActiveProjectTarget } from "../../hooks/useActiveProjectTarget";
+import { useHandleNewThread } from "../../hooks/useHandleNewThread";
 import { useClientSettings, useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { selectProjectGroupingSettings } from "../../logicalProject";
 import { cn } from "../../lib/utils";
@@ -159,6 +160,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const projects = useProjects();
   const activeTarget = useActiveProjectTarget();
+  const { defaultProjectRef } = useHandleNewThread();
   const sidebarProjectScopeKey = useUiStateStore((store) => store.sidebarProjectScopeKey);
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
 
@@ -196,7 +198,16 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
         scopeKey: sidebarProjectScopeKey,
         settings: projectGroupingSettings,
         primaryEnvironmentId,
-      });
+      }) ??
+      (defaultProjectRef
+        ? projects.find(
+            (p) =>
+              p.id === defaultProjectRef.projectId &&
+              p.environmentId === defaultProjectRef.environmentId,
+          )
+        : undefined) ??
+      projects.find((p) => p.repositoryIdentity != null) ??
+      projects[0];
     if (targetProject) {
       void navigate({
         to: "/issues",
@@ -213,6 +224,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   }, [
     activeTarget,
     closeMobileSidebar,
+    defaultProjectRef,
     navigate,
     primaryEnvironmentId,
     projectGroupingSettings,
