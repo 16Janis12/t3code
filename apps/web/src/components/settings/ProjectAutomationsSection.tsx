@@ -1,6 +1,8 @@
 import {
   T3_PROJECT_FILE_NAME,
   type EnvironmentId,
+  type ModelSelection,
+  type ProviderInstanceId,
   type T3ProjectFile,
   type T3ProjectFileAutomation,
 } from "@t3tools/contracts";
@@ -26,6 +28,8 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
 import { toastManager } from "~/components/ui/toast";
+import type { ModelEsque } from "~/components/chat/providerIconUtils";
+import type { ProviderInstanceEntry } from "~/providerInstances";
 import { ProjectAutomationEditorDialog } from "./ProjectAutomationEditorDialog";
 import { SettingsRow } from "./settingsLayout";
 
@@ -34,6 +38,10 @@ export interface ProjectAutomationsSectionProps {
   readonly workspaceRoot: string;
   readonly t3File: T3ProjectFileState;
   readonly disabled?: boolean;
+  readonly instanceEntries?: ReadonlyArray<ProviderInstanceEntry>;
+  readonly modelOptionsByInstance?: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
+  readonly defaultModelSelection?: ModelSelection | null;
+  readonly onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
 }
 
 export function ProjectAutomationsSection({
@@ -41,6 +49,10 @@ export function ProjectAutomationsSection({
   workspaceRoot,
   t3File,
   disabled = false,
+  instanceEntries,
+  modelOptionsByInstance,
+  defaultModelSelection,
+  onOpenProviderSetup,
 }: ProjectAutomationsSectionProps) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingAutomation, setEditingAutomation] = useState<T3ProjectFileAutomation | null>(null);
@@ -223,6 +235,12 @@ export function ProjectAutomationsSection({
                   <span className="shrink-0 rounded-sm border border-border/60 bg-muted/40 px-1.5 py-px font-mono text-[11px] font-normal text-muted-foreground">
                     {triggerSummary}
                   </span>
+                  {automation.action.type === "thread" && automation.action.modelSelection ? (
+                    <span className="shrink-0 rounded-sm border border-border/60 bg-muted/40 px-1.5 py-px font-mono text-[11px] font-normal text-muted-foreground">
+                      {automation.action.modelSelection.instanceId}:{" "}
+                      {automation.action.modelSelection.model}
+                    </span>
+                  ) : null}
                 </span>
               }
               description={
@@ -243,9 +261,9 @@ export function ProjectAutomationsSection({
                     size="icon-xs"
                     variant="ghost"
                     className="shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
-                    aria-label={`Edit ${automation.name}`}
                     disabled={disabled || isSaving}
                     onClick={() => handleOpenEdit(automation)}
+                    aria-label={`Edit ${automation.name}`}
                   >
                     <PencilIcon className="size-3.5" />
                   </Button>
@@ -253,9 +271,9 @@ export function ProjectAutomationsSection({
                     size="icon-xs"
                     variant="ghost"
                     className="shrink-0 text-muted-foreground hover:text-destructive opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
-                    aria-label={`Delete ${automation.name}`}
                     disabled={disabled || isSaving}
                     onClick={() => handleDelete(automation.id)}
+                    aria-label={`Delete ${automation.name}`}
                   >
                     <Trash2Icon className="size-3.5" />
                   </Button>
@@ -272,6 +290,10 @@ export function ProjectAutomationsSection({
         automation={editingAutomation}
         existingIds={automations.map((a) => a.id)}
         onSave={handleSaveAutomation}
+        instanceEntries={instanceEntries}
+        modelOptionsByInstance={modelOptionsByInstance}
+        defaultModelSelection={defaultModelSelection}
+        onOpenProviderSetup={onOpenProviderSetup}
       />
     </>
   );

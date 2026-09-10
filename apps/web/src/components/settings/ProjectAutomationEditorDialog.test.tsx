@@ -1,3 +1,9 @@
+import {
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type ServerProvider,
+  type T3ProjectFileAutomation,
+} from "@t3tools/contracts";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -38,7 +44,25 @@ vi.mock("~/components/ui/checkbox", () => ({
   Checkbox: (props: Record<string, unknown>) => <input type="checkbox" {...props} />,
 }));
 
+import { deriveProviderInstanceEntries } from "../../providerInstances";
 import { ProjectAutomationEditorDialog } from "./ProjectAutomationEditorDialog";
+
+function createMockEntry(instanceId: string, driver: string) {
+  const provider: ServerProvider = {
+    instanceId: ProviderInstanceId.make(instanceId),
+    driver: ProviderDriverKind.make(driver),
+    enabled: true,
+    installed: true,
+    version: null,
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: "2026-08-28T00:00:00.000Z",
+    models: [{ id: "model-1", name: "Model One" }],
+    slashCommands: [],
+    skills: [],
+  };
+  return deriveProviderInstanceEntries([provider])[0]!;
+}
 
 describe("ProjectAutomationEditorDialog", () => {
   it("renders create automation dialog with trigger and action selectors", () => {
@@ -61,5 +85,65 @@ describe("ProjectAutomationEditorDialog", () => {
     expect(markup).toContain("Agent Thread");
     expect(markup).toContain("Run Script / Command");
     expect(markup).toContain("Create Automation");
+  });
+
+  it("renders model selection with inherited default text when creating a new automation", () => {
+    const entry = createMockEntry("codex", "codex");
+    const markup = renderToStaticMarkup(
+      <ProjectAutomationEditorDialog
+        open={true}
+        onOpenChange={() => {}}
+        automation={null}
+        existingIds={[]}
+        onSave={() => {}}
+        instanceEntries={[entry]}
+        defaultModelSelection={{
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "model-1",
+        }}
+      />,
+    );
+
+    expect(markup).toContain("Model &amp; Provider");
+    expect(markup).toContain("Inherits the project default model unless customized.");
+    expect(markup).not.toContain("Reset to project default");
+  });
+
+  it("renders custom model selection and reset button when editing an automation with modelSelection", () => {
+    const entry = createMockEntry("claude", "anthropic");
+    const automation: T3ProjectFileAutomation = {
+      id: "pr-bot",
+      name: "PR Bot",
+      enabled: true,
+      trigger: {
+        type: "github_pr",
+        events: ["opened"],
+      },
+      action: {
+        type: "thread",
+        title: "Review PR",
+        prompt: "Review PR",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("claude"),
+          model: "claude-3-7-sonnet",
+        },
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <ProjectAutomationEditorDialog
+        open={true}
+        onOpenChange={() => {}}
+        automation={automation}
+        existingIds={[]}
+        onSave={() => {}}
+        instanceEntries={[entry]}
+      />,
+    );
+
+    expect(markup).toContain("Edit Automation");
+    expect(markup).toContain("Model &amp; Provider");
+    expect(markup).toContain("Custom model configured for this automation.");
+    expect(markup).toContain("Reset to project default");
   });
 });
