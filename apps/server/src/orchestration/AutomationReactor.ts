@@ -521,10 +521,7 @@ export const make = Effect.gen(function* () {
     start,
     drain: worker.drain,
     pollOnce: (options?: { readonly now?: Date } | undefined) =>
-      pollAllProjects(options?.now).pipe(
-        Effect.scoped,
-        Effect.catchAll(() => Effect.void),
-      ),
+      pollAllProjects(options?.now).pipe(Effect.scoped, Effect.ignore),
   } satisfies AutomationReactor["Service"];
 });
 

@@ -272,7 +272,7 @@ describe("AutomationReactor", () => {
                   type: "thread",
                   prompt: "Run custom",
                   modelSelection: actionModelSelection,
-                  runtimeMode: "approval-required",
+                  runtimeMode: "read-only",
                 },
               },
             ],
