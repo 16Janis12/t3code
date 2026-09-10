@@ -2,22 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "types": ["node"],
-    "lib": ["ESNext", "esnext.disposable"],
-    "plugins": [
-      {
-        "name": "@effect/language-service",
-        "diagnosticSeverity": {
-          "deterministicKeys": "off",
-          "globalDate": "off",
-          "globalDateInEffect": "off",
-          "nodeBuiltinImport": "off",
-          "preferSchemaOverJson": "off",
-          "globalErrorInEffectCatch": "off",
-          "globalErrorInEffectFailure": "off",
-          "missingEffectError": "off"
-        }
-      }
-    ]
+    "lib": ["ESNext", "esnext.disposable"]
   },
   "include": ["src", "vite.config.ts", "scripts", "integration", "../../scripts/lib"]
 }
