@@ -227,6 +227,15 @@ describe("T3ProjectFile", () => {
       ).toThrow();
     });
 
+    it("decodes manual trigger", () => {
+      const trigger = decodeTrigger({
+        type: "manual",
+      });
+      expect(trigger).toEqual({
+        type: "manual",
+      });
+    });
+
     it("decodes github_issue trigger", () => {
       const trigger = decodeTrigger({
         type: "github_issue",

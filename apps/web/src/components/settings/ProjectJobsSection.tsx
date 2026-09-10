@@ -2,14 +2,16 @@ import {
   BUILTIN_JOBS,
   T3_PROJECT_FILE_NAME,
   type EnvironmentId,
+  type ModelSelection,
+  type ProjectId,
   type T3ProjectFileJob,
 } from "@t3tools/contracts";
 import {
   BriefcaseIcon,
   BugIcon,
   Code2Icon,
-  FileCodeIcon,
   PencilIcon,
+  PlayIcon,
   PlusIcon,
   ShieldAlertIcon,
   ShieldCheckIcon,
@@ -28,13 +30,16 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { Button } from "~/components/ui/button";
 import { toastManager } from "~/components/ui/toast";
 import { ProjectJobEditorDialog } from "./ProjectJobEditorDialog";
+import { ProjectJobLaunchDialog } from "./ProjectJobLaunchDialog";
 import { SettingsRow } from "./settingsLayout";
 
 export interface ProjectJobsSectionProps {
   readonly environmentId: EnvironmentId;
+  readonly projectId?: ProjectId | undefined;
   readonly workspaceRoot: string;
   readonly t3File: T3ProjectFileState;
-  readonly disabled?: boolean;
+  readonly disabled?: boolean | undefined;
+  readonly defaultModelSelection?: ModelSelection | null | undefined;
 }
 
 function getJobIcon(id: string) {
@@ -56,12 +61,15 @@ function getJobIcon(id: string) {
 
 export function ProjectJobsSection({
   environmentId,
+  projectId,
   workspaceRoot,
   t3File,
   disabled = false,
+  defaultModelSelection,
 }: ProjectJobsSectionProps) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<T3ProjectFileJob | null>(null);
+  const [launchingJob, setLaunchingJob] = useState<T3ProjectFileJob | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const writeProjectFile = useAtomCommand(projectEnvironment.writeFile, {
@@ -129,21 +137,20 @@ export function ProjectJobsSection({
     }
   };
 
-  const handleDelete = (jobId: string) => {
-    const updated = customJobs.filter((j) => j.id !== jobId);
-    void persistJobs(updated);
+  const handleSaveJob = async (savedJob: T3ProjectFileJob) => {
+    let nextJobs: T3ProjectFileJob[];
+    const exists = customJobs.some((j) => j.id === savedJob.id);
+    if (exists) {
+      nextJobs = customJobs.map((j) => (j.id === savedJob.id ? savedJob : j));
+    } else {
+      nextJobs = [...customJobs, savedJob];
+    }
+    await persistJobs(nextJobs);
   };
 
-  const handleSaveJob = (saved: T3ProjectFileJob) => {
-    const index = customJobs.findIndex((j) => j.id === saved.id);
-    let updated: T3ProjectFileJob[];
-    if (index >= 0) {
-      updated = [...customJobs];
-      updated[index] = saved;
-    } else {
-      updated = [...customJobs, saved];
-    }
-    void persistJobs(updated);
+  const handleDelete = async (jobId: string) => {
+    const nextJobs = customJobs.filter((j) => j.id !== jobId);
+    await persistJobs(nextJobs);
   };
 
   const handleOpenAdd = () => {
@@ -164,8 +171,8 @@ export function ProjectJobsSection({
         <div className="min-w-0">
           <h3 className="text-base font-semibold text-foreground">Agent Jobs</h3>
           <p className="text-pretty text-sm text-muted-foreground">
-            Specialized agent roles (e.g. PR Reviewer, Pentester, Bug Triager) available in
-            automations.
+            Specialized agent roles (e.g. PR Reviewer, Pentester, Bug Triager) available for
+            on-demand launch or automated background runs.
           </p>
         </div>
         <div className="flex w-full flex-wrap gap-1.5 sm:w-auto sm:shrink-0 sm:justify-end">
@@ -205,6 +212,20 @@ export function ProjectJobsSection({
             </span>
           }
           description={<p className="pt-0.5 text-xs text-muted-foreground">{job.description}</p>}
+          control={
+            <div className="flex items-center gap-2">
+              <Button
+                size="xs"
+                variant="outline"
+                className="shrink-0 gap-1 text-xs"
+                onClick={() => setLaunchingJob(job)}
+                aria-label={`Launch ${job.name}`}
+              >
+                <PlayIcon className="size-3 text-emerald-500" />
+                Launch
+              </Button>
+            </div>
+          }
         />
       ))}
 
@@ -244,6 +265,16 @@ export function ProjectJobsSection({
               control={
                 <div className="flex items-center gap-2">
                   <Button
+                    size="xs"
+                    variant="outline"
+                    className="shrink-0 gap-1 text-xs"
+                    onClick={() => setLaunchingJob(job)}
+                    aria-label={`Launch ${job.name}`}
+                  >
+                    <PlayIcon className="size-3 text-emerald-500" />
+                    Launch
+                  </Button>
+                  <Button
                     size="icon-xs"
                     variant="ghost"
                     className="shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
@@ -276,6 +307,17 @@ export function ProjectJobsSection({
         job={editingJob}
         existingIds={existingIds}
         onSave={handleSaveJob}
+      />
+
+      <ProjectJobLaunchDialog
+        open={launchingJob !== null}
+        onOpenChange={(open) => {
+          if (!open) setLaunchingJob(null);
+        }}
+        job={launchingJob}
+        environmentId={environmentId}
+        projectId={projectId}
+        defaultModelSelection={defaultModelSelection}
       />
     </>
   );

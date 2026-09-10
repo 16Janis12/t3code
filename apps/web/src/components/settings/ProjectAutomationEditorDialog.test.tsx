@@ -81,6 +81,7 @@ describe("ProjectAutomationEditorDialog", () => {
     expect(markup).toContain("Cron Schedule");
     expect(markup).toContain("GitHub PR");
     expect(markup).toContain("GitHub Issue");
+    expect(markup).toContain("Manual");
     expect(markup).toContain("Action");
     expect(markup).toContain("Agent Thread");
     expect(markup).toContain("Run Script / Command");
