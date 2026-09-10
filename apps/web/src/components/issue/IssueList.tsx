@@ -1,32 +1,11 @@
-import type { IssueListItem, IssueListState } from "@t3tools/contracts";
-import {
-  CheckCircle2Icon,
-  CircleDotIcon,
-  MessageSquareIcon,
-  SearchIcon,
-  XIcon,
-} from "lucide-react";
-import { memo } from "react";
+import type { IssueListItem } from "@t3tools/contracts";
+import { CheckCircle2Icon, CircleDotIcon, MessageSquareIcon } from "lucide-react";
+import { type ComponentProps, memo } from "react";
 
-import { Badge } from "~/components/ui/badge";
-import { Button } from "~/components/ui/button";
-import { Input } from "~/components/ui/input";
-import { ScrollArea } from "~/components/ui/scroll-area";
-import { Spinner } from "~/components/ui/spinner";
+import { ProjectFavicon } from "~/components/ProjectFavicon";
 import { cn } from "~/lib/utils";
 
-export interface IssueListProps {
-  readonly issues: ReadonlyArray<IssueListItem>;
-  readonly selectedNumber: number | null;
-  readonly onSelectIssue: (issue: IssueListItem) => void;
-  readonly stateFilter: IssueListState;
-  readonly onStateFilterChange: (state: IssueListState) => void;
-  readonly searchQuery: string;
-  readonly onSearchChange: (query: string) => void;
-  readonly isLoading: boolean;
-}
-
-function formatRelativeTime(dateString: string): string {
+export function formatRelativeTime(dateString: string): string {
   try {
     const date = new Date(dateString);
     const now = new Date();
@@ -45,176 +24,170 @@ function formatRelativeTime(dateString: string): string {
   }
 }
 
-export const IssueList = memo(function IssueList({
-  issues,
-  selectedNumber,
-  onSelectIssue,
-  stateFilter,
-  onStateFilterChange,
-  searchQuery,
-  onSearchChange,
-  isLoading,
-}: IssueListProps) {
-  const filteredIssues = issues.filter((issue) => {
-    if (stateFilter !== "all" && issue.state !== stateFilter) return false;
-    if (searchQuery.trim().length > 0) {
-      const q = searchQuery.toLowerCase();
-      const matchNumber = String(issue.number).includes(q);
-      const matchTitle = issue.title.toLowerCase().includes(q);
-      const matchAuthor = issue.author?.login.toLowerCase().includes(q) ?? false;
-      const matchLabel = issue.labels.some((l) => l.name.toLowerCase().includes(q));
-      return matchNumber || matchTitle || matchAuthor || matchLabel;
-    }
-    return true;
-  });
+export function IssueRowLabels({ labels }: { readonly labels: IssueListItem["labels"] }) {
+  if (labels.length === 0) return null;
+  const maxVisible = 3;
+  const visibleLabels = labels.slice(0, maxVisible);
+  const remaining = labels.length - maxVisible;
 
   return (
-    <div className="flex h-full flex-col border-r border-border bg-sidebar/30">
-      {/* Controls: Search and State Filters */}
-      <div className="flex flex-col gap-2.5 border-b border-border p-3">
-        <div className="relative flex items-center">
-          <SearchIcon className="absolute left-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search issues..."
-            className="h-8 pl-8 pr-7 text-xs bg-background/60"
+    <span className="flex min-w-0 items-center gap-1">
+      {visibleLabels.map((label) => (
+        <span
+          key={label.name}
+          className="inline-flex max-w-40 min-w-0 items-center gap-1 rounded-full border border-border/70 bg-muted/40 py-0 pl-1 pr-1.5 text-[10px] leading-3.5 text-muted-foreground"
+        >
+          <span
+            aria-hidden
+            className="size-2 shrink-0 rounded-full bg-muted-foreground"
+            style={label.color ? { backgroundColor: `#${label.color}` } : undefined}
           />
-          {searchQuery ? (
-            <button
-              onClick={() => onSearchChange("")}
-              className="absolute right-2 text-muted-foreground hover:text-foreground"
-              aria-label="Clear search"
-            >
-              <XIcon className="h-3.5 w-3.5" />
-            </button>
-          ) : null}
-        </div>
+          <span className="truncate">{label.name}</span>
+        </span>
+      ))}
+      {remaining > 0 ? (
+        <span className="text-[10px] text-muted-foreground font-mono">+{remaining}</span>
+      ) : null}
+    </span>
+  );
+}
 
-        <div className="flex items-center gap-1 rounded-md bg-muted/60 p-0.5 text-xs">
-          <button
-            onClick={() => onStateFilterChange("open")}
-            className={cn(
-              "flex-1 rounded py-1 px-2 text-center font-medium transition-colors",
-              stateFilter === "open"
-                ? "bg-background text-foreground shadow-xs"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Open
-          </button>
-          <button
-            onClick={() => onStateFilterChange("closed")}
-            className={cn(
-              "flex-1 rounded py-1 px-2 text-center font-medium transition-colors",
-              stateFilter === "closed"
-                ? "bg-background text-foreground shadow-xs"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Closed
-          </button>
-          <button
-            onClick={() => onStateFilterChange("all")}
-            className={cn(
-              "flex-1 rounded py-1 px-2 text-center font-medium transition-colors",
-              stateFilter === "all"
-                ? "bg-background text-foreground shadow-xs"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            All
-          </button>
-        </div>
-      </div>
+export interface IssueRowProps {
+  readonly issue: IssueListItem;
+  readonly selected: boolean;
+  readonly project?: ComponentProps<typeof ProjectFavicon>["project"] | undefined;
+  readonly onSelect: (issue: IssueListItem) => void;
+}
 
-      {/* List */}
-      <ScrollArea className="flex-1">
-        {isLoading && issues.length === 0 ? (
-          <div className="flex h-32 items-center justify-center">
-            <Spinner className="h-5 w-5 text-muted-foreground" />
-          </div>
-        ) : filteredIssues.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center text-xs text-muted-foreground">
-            <CircleDotIcon className="mb-2 h-8 w-8 stroke-[1.5] opacity-40" />
-            <p className="font-medium text-foreground">No issues found</p>
-            <p className="mt-1 text-muted-foreground">
-              {searchQuery
-                ? "Try adjusting your search query or state filter"
-                : `No ${stateFilter === "all" ? "" : stateFilter} issues in this repository`}
-            </p>
-          </div>
+export const IssueRow = memo(function IssueRow({
+  issue,
+  selected,
+  project,
+  onSelect,
+}: IssueRowProps) {
+  const isOpen = issue.state === "open";
+
+  return (
+    <button
+      type="button"
+      aria-current={selected ? "true" : undefined}
+      onClick={() => onSelect(issue)}
+      className={cn(
+        "@container/issue-row grid w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        "[contain-intrinsic-block-size:66px] [content-visibility:auto]",
+        selected ? "bg-accent" : "hover:bg-accent/60",
+      )}
+    >
+      <span className="shrink-0">
+        {isOpen ? (
+          <CircleDotIcon className="size-4 text-emerald-500" />
         ) : (
-          <div className="divide-y divide-border/50">
-            {filteredIssues.map((issue) => {
-              const isSelected = issue.number === selectedNumber;
-              const isOpen = issue.state === "open";
-
-              return (
-                <button
-                  key={issue.id}
-                  onClick={() => onSelectIssue(issue)}
-                  className={cn(
-                    "w-full text-left p-3 transition-colors hover:bg-muted/50 flex flex-col gap-1.5 focus-visible:outline-none focus-visible:bg-muted/70",
-                    isSelected && "bg-muted/80 hover:bg-muted",
-                  )}
-                >
-                  <div className="flex items-start gap-2">
-                    <span className="mt-0.5 shrink-0">
-                      {isOpen ? (
-                        <CircleDotIcon className="h-4 w-4 text-emerald-500" />
-                      ) : (
-                        <CheckCircle2Icon className="h-4 w-4 text-purple-500" />
-                      )}
-                    </span>
-                    <span className="font-medium text-sm leading-snug line-clamp-2 text-foreground">
-                      {issue.title}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2 pl-6 text-xs text-muted-foreground flex-wrap">
-                    <span className="font-mono text-muted-foreground/80 font-semibold">
-                      #{issue.number}
-                    </span>
-                    <span>•</span>
-                    <span>{issue.author?.login ?? "ghost"}</span>
-                    <span>•</span>
-                    <span>{formatRelativeTime(issue.updatedAt)}</span>
-                    {issue.commentsCount > 0 ? (
-                      <span className="ml-auto flex items-center gap-1 font-mono text-[11px]">
-                        <MessageSquareIcon className="h-3 w-3 opacity-70" />
-                        {issue.commentsCount}
-                      </span>
-                    ) : null}
-                  </div>
-
-                  {issue.labels.length > 0 ? (
-                    <div className="flex flex-wrap gap-1 pl-6 pt-0.5">
-                      {issue.labels.map((label) => (
-                        <span
-                          key={label.name}
-                          className="inline-flex items-center rounded-full px-1.5 py-0.2 text-[10px] font-medium border border-border/80 bg-muted/60 text-muted-foreground"
-                          style={
-                            label.color
-                              ? {
-                                  borderColor: `#${label.color}44`,
-                                  backgroundColor: `#${label.color}15`,
-                                  color: `#${label.color}`,
-                                }
-                              : undefined
-                          }
-                        >
-                          {label.name}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
+          <CheckCircle2Icon className="size-4 text-purple-500" />
         )}
-      </ScrollArea>
-    </div>
+      </span>
+
+      <span className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5">
+        <span className="col-start-1 row-start-1 block truncate text-sm font-medium text-foreground">
+          {issue.title}
+        </span>
+
+        {issue.commentsCount > 0 ? (
+          <span className="col-start-2 row-start-1 flex items-center justify-self-end gap-1 font-mono text-[11px] text-muted-foreground/70">
+            <MessageSquareIcon className="size-3.5 opacity-70" />
+            <span>{issue.commentsCount}</span>
+          </span>
+        ) : null}
+
+        <div className="col-start-1 col-span-2 row-start-2 flex items-center gap-2 overflow-hidden text-xs text-muted-foreground/70 flex-wrap">
+          <span className="font-mono font-medium text-foreground/80 shrink-0">#{issue.number}</span>
+          {project ? (
+            <span className="flex items-center gap-1 shrink-0">
+              <ProjectFavicon project={project} className="size-3 shrink-0" />
+              <span className="max-w-36 truncate">{project.title}</span>
+            </span>
+          ) : null}
+          <span className="shrink-0">opened by {issue.author?.login ?? "ghost"}</span>
+          <span className="shrink-0">•</span>
+          <span className="shrink-0">{formatRelativeTime(issue.updatedAt)}</span>
+          {issue.labels.length > 0 ? <IssueRowLabels labels={issue.labels} /> : null}
+        </div>
+      </span>
+    </button>
   );
 });
+
+const TITLE_WIDTHS = ["w-3/5", "w-2/5", "w-1/2", "w-2/3", "w-2/5", "w-3/5", "w-1/2"];
+const META_WIDTHS = ["w-2/5", "w-1/3", "w-2/5", "w-1/4", "w-1/3", "w-2/5", "w-1/3"];
+
+export function IssueListGhost({
+  rows = 7,
+  caption,
+}: {
+  readonly rows?: number;
+  readonly caption?: string;
+}) {
+  return (
+    <div
+      role="status"
+      aria-label={caption ?? "Loading issues"}
+      className="motion-safe:animate-skeleton space-y-0.5"
+    >
+      {caption ? (
+        <p className="px-3 pb-1 text-xs font-medium text-muted-foreground/70">{caption}</p>
+      ) : null}
+      {Array.from({ length: rows }, (_, index) => (
+        <div
+          key={index}
+          className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-lg px-3 py-3"
+        >
+          <div aria-hidden className="size-4 rounded-full bg-muted-foreground/15" />
+          <div className="min-w-0 space-y-1.5">
+            <div
+              aria-hidden
+              className={cn(
+                "h-3.5 rounded bg-muted-foreground/15",
+                TITLE_WIDTHS[index % TITLE_WIDTHS.length],
+              )}
+            />
+            <div
+              aria-hidden
+              className={cn(
+                "h-3 rounded bg-muted-foreground/15",
+                META_WIDTHS[index % META_WIDTHS.length],
+              )}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function IssueEmptyState({
+  hasFilters,
+  onResetFilters,
+}: {
+  readonly hasFilters: boolean;
+  readonly onResetFilters?: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center p-12 text-center text-xs text-muted-foreground">
+      <CircleDotIcon className="mb-3 size-10 stroke-[1.5] opacity-40 text-muted-foreground" />
+      <p className="text-sm font-semibold text-foreground">No issues found</p>
+      <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+        {hasFilters
+          ? "No issues matched your search or filters. Try adjusting your query or resetting the filters."
+          : "There are no issues in this repository."}
+      </p>
+      {hasFilters && onResetFilters ? (
+        <button
+          type="button"
+          onClick={onResetFilters}
+          className="mt-3 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors"
+        >
+          Clear filters
+        </button>
+      ) : null}
+    </div>
+  );
+}

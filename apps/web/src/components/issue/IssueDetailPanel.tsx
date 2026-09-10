@@ -8,11 +8,11 @@ import {
   RotateCcwIcon,
   SparklesIcon,
   XCircleIcon,
+  XIcon,
 } from "lucide-react";
 import { memo, useState } from "react";
 
 import ChatMarkdown from "~/components/ChatMarkdown";
-import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Spinner } from "~/components/ui/spinner";
@@ -25,6 +25,7 @@ export interface IssueDetailPanelProps {
   readonly onWorkOnIssue: (issue: IssueDetail) => void;
   readonly onToggleState: (issue: IssueDetail, newState: IssueState) => Promise<void>;
   readonly onAddComment: (issue: IssueDetail, comment: string) => Promise<void>;
+  readonly onClose?: () => void;
   readonly isUpdatingState: boolean;
   readonly isAddingComment: boolean;
 }
@@ -58,6 +59,7 @@ export const IssueDetailPanel = memo(function IssueDetailPanel({
   onWorkOnIssue,
   onToggleState,
   onAddComment,
+  onClose,
   isUpdatingState,
   isAddingComment,
 }: IssueDetailPanelProps) {
@@ -168,6 +170,17 @@ export const IssueDetailPanel = memo(function IssueDetailPanel({
             >
               <ExternalLinkIcon className="h-4 w-4" />
             </a>
+
+            {onClose ? (
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Close issue panel"
+                onClick={onClose}
+              >
+                <XIcon className="size-4" />
+              </Button>
+            ) : null}
           </div>
         </div>
 
