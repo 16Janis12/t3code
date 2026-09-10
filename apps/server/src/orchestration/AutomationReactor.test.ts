@@ -84,7 +84,7 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
   } as unknown as T3ProjectFileLoader["Service"]);
 
   const githubCliLayer = Layer.succeed(GitHubCli, {
-    execute: (input) =>
+    execute: (input: any) =>
       Ref.update(ghCommands, (cmds) => [...cmds, input.args]).pipe(
         Effect.flatMap(() => {
           const isPr = input.args.includes("pr");
@@ -99,7 +99,7 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
   } as unknown as GitHubCli["Service"]);
 
   const processRunnerLayer = Layer.succeed(ProcessRunner, {
-    run: (input) =>
+    run: (input: any) =>
       Ref.update(executedScripts, (scripts) => [...scripts, input]).pipe(
         Effect.as({
           stdout: "",

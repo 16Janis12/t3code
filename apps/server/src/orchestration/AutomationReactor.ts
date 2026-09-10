@@ -51,7 +51,7 @@ export class AutomationReactor extends Context.Service<
   {
     readonly start: () => Effect.Effect<void, never, Scope.Scope>;
     readonly drain: Effect.Effect<void>;
-    readonly pollOnce: (options?: { readonly now?: Date }) => Effect.Effect<void>;
+    readonly pollOnce: (options?: { readonly now?: Date } | undefined) => Effect.Effect<void>;
   }
 >()("t3/orchestration/AutomationReactor") {}
 
@@ -520,7 +520,11 @@ export const make = Effect.gen(function* () {
   return {
     start,
     drain: worker.drain,
-    pollOnce: (options?: { readonly now?: Date }) => Effect.scoped(pollAllProjects(options?.now)),
+    pollOnce: (options?: { readonly now?: Date } | undefined) =>
+      pollAllProjects(options?.now).pipe(
+        Effect.scoped,
+        Effect.catchAll(() => Effect.void),
+      ),
   } satisfies AutomationReactor["Service"];
 });
 
