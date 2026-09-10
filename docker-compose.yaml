@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   tailscale:
@@ -34,6 +34,11 @@ services:
       - GIT_AUTHOR_EMAIL=${GIT_AUTHOR_EMAIL:-t3@example.com}
       - GIT_COMMITTER_NAME=${GIT_COMMITTER_NAME:-${GIT_AUTHOR_NAME:-T3 User}}
       - GIT_COMMITTER_EMAIL=${GIT_COMMITTER_EMAIL:-${GIT_AUTHOR_EMAIL:-t3@example.com}}
+      # Auto-Update-Konfiguration:
+      # AUTO_UPDATE=true: Aktiviert automatische Updates von @16janis12/t3
+      - AUTO_UPDATE=${AUTO_UPDATE:-true}
+      # AUTO_UPDATE_INTERVAL: Prüfintervall im Hintergrund in Sekunden (z.B. 3600 = 1h; 0 = nur beim Start)
+      - AUTO_UPDATE_INTERVAL=${AUTO_UPDATE_INTERVAL:-3600}
     volumes:
       # WICHTIG: ~/.t3 statt ~/.config/t3, damit SQLite-DB & Pairing erhalten bleiben
       - ./t3_data:/root/.t3
