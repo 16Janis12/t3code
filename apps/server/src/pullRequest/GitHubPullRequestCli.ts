@@ -1775,53 +1775,37 @@ export const make = Effect.gen(function* () {
     // One `gh pr view` either way; asking for the detail fields costs nothing extra and hands
     // the thread overview its author, diff stat, review decision and checks in the same read.
     getPullRequestSummary: (input) =>
-      github
-        .execute({
-          cwd: input.cwd,
-          args: [
-            "pr",
-            "view",
-            String(input.number),
-            ...repositoryArgs(input),
-            "--json",
-            PULL_REQUEST_DETAIL_JSON_FIELDS,
-          ],
-        })
-        .pipe(
-          Effect.flatMap((result) => {
-            const decoded = decodePullRequestDetailJson(result.stdout.trim());
-            if (!Result.isSuccess(decoded)) {
-              return Effect.fail(
-                new GitHubPullRequestReadError({
-                  command: "gh",
-                  cwd: input.cwd,
-                  operation: "getPullRequestSummary",
-                  cause: decoded.failure,
-                }),
-              );
-            }
-            const detail = decoded.success;
-            return Effect.succeed({
-              number: detail.number,
-              title: detail.title,
-              url: detail.url,
-              headBranch: detail.headBranch,
-              baseBranch: detail.baseBranch,
-              state: detail.state,
-              updatedAt: detail.updatedAt,
-              closedAt: detail.closedAt ?? null,
-              mergedAt: detail.mergedAt ?? null,
-              isDraft: detail.isDraft,
-              author: detail.author,
-              additions: detail.additions,
-              deletions: detail.deletions,
-              changedFiles: detail.changedFiles,
-              reviewDecision: detail.reviewDecision,
-              checksState: detail.checksState,
-              mergeability: detail.mergeability,
-            });
-          }),
+      getPullRequestDetail(input).pipe(
+        Effect.map((detail) => ({
+          number: detail.number,
+          title: detail.title,
+          url: detail.url,
+          headBranch: detail.headBranch,
+          baseBranch: detail.baseBranch,
+          state: detail.state,
+          updatedAt: detail.updatedAt,
+          closedAt: detail.closedAt ?? null,
+          mergedAt: detail.mergedAt ?? null,
+          isDraft: detail.isDraft,
+          author: detail.author,
+          additions: detail.additions,
+          deletions: detail.deletions,
+          changedFiles: detail.changedFiles,
+          reviewDecision: detail.reviewDecision,
+          checksState: detail.checksState,
+          mergeability: detail.mergeability,
+        })),
+        Effect.mapError((error) =>
+          error._tag === "GitHubPullRequestReadError" && error.operation === "getPullRequestDetail"
+            ? new GitHubPullRequestReadError({
+                command: error.command,
+                cwd: error.cwd,
+                operation: "getPullRequestSummary",
+                cause: error.cause,
+              })
+            : error,
         ),
+      ),
 
     getPullRequestDetail,
     listWorkflowRunsRequiringApproval,

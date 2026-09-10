@@ -19,8 +19,8 @@ const mockedStackMemberships = vi.fn<GitHubCli.GitHubCli["Service"]["execute"]>(
 );
 const mockedGetPullRequest = vi.fn<GitHubCli.GitHubCli["Service"]["getPullRequest"]>();
 
-const layer = it.layer(
-  GitHubPullRequestCli.layer.pipe(
+const createLayer = () =>
+  Layer.fresh(GitHubPullRequestCli.layer).pipe(
     Layer.provide(
       Layer.mock(GitHubCli.GitHubCli)({
         execute: (input) =>
@@ -31,8 +31,9 @@ const layer = it.layer(
       }),
     ),
     Layer.provide(GitHubGraphQlBudget.layer),
-  ),
-);
+  );
+
+const layer = it.layer(createLayer());
 
 function output(stdout: string, stdoutTruncated = false, stdoutInvalidUtf8 = false) {
   return {
@@ -2988,6 +2989,93 @@ layer("GitHubPullRequestCli.layer", (it) => {
         mockedExecute.mockReturnValueOnce(Effect.succeed(output(successfulDetailJson)));
         const secondDetail = yield* cli.getPullRequestDetail(input);
         expect(secondDetail.title).toBe("Resilient detail");
+        const fourthCallFields = mockedExecute.mock.calls.at(-1)?.[0].args.at(-1);
+        expect(fourthCallFields).not.toContain("autoMergeRequest");
+        expect(fourthCallFields).not.toContain("reviewRequests");
+      }).pipe(Effect.provide(createLayer())),
+  );
+
+  it.effect(
+    "retries and succeeds when getPullRequestSummary encounters unsupported autoMergeRequest and reviewRequests scopes",
+    () =>
+      Effect.gen(function* () {
+        const unsupportedAutoMergeError = new GitHubCli.GitHubCliCommandError({
+          command: "gh",
+          cwd: "/w",
+          cause: new VcsProcessExitError({
+            operation: "GitHubCli.execute",
+            command: "gh",
+            cwd: "/w",
+            exitCode: 1,
+            detail: 'Unknown JSON field: "autoMergeRequest"',
+            stderr: 'Unknown JSON field: "autoMergeRequest"\nDid you mean one of...',
+          }),
+        });
+        const missingOrgScopeError = new GitHubCli.GitHubCliCommandError({
+          command: "gh",
+          cwd: "/w",
+          cause: new VcsProcessExitError({
+            operation: "GitHubCli.execute",
+            command: "gh",
+            cwd: "/w",
+            exitCode: 1,
+            detail:
+              "GraphQL: Your token has not been granted the required scopes to execute this query. The 'login' field requires one of the following scopes: ['read:org']",
+            stderr:
+              "GraphQL: Your token has not been granted the required scopes to execute this query. The 'login' field requires one of the following scopes: ['read:org']",
+          }),
+        });
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        const successfulDetailJson = JSON.stringify({
+          number: 8,
+          title: "Resilient summary",
+          url: "https://github.com/acme/web/pull/8",
+          author: { login: "octocat" },
+          headRefName: "feature",
+          baseRefName: "main",
+          createdAt: "2026-07-01T00:00:00Z",
+          updatedAt: "2026-07-02T00:00:00Z",
+          body: "Loaded despite old gh",
+          changedFiles: 1,
+        });
+
+        // First call fails with autoMergeRequest
+        mockedExecute.mockReturnValueOnce(Effect.fail(unsupportedAutoMergeError));
+        // Second call fails with missing read:org scope on reviewRequests
+        mockedExecute.mockReturnValueOnce(Effect.fail(missingOrgScopeError));
+        // Third call succeeds
+        mockedExecute.mockReturnValueOnce(Effect.succeed(output(successfulDetailJson)));
+
+        const cli = yield* GitHubPullRequestCli.GitHubPullRequestCli;
+        const input = {
+          cwd: "/w",
+          repository: "acme/web",
+          host: "github.com",
+          number: 8,
+        } as const;
+
+        const summary = yield* cli.getPullRequestSummary(input);
+        expect(summary.title).toBe("Resilient summary");
+        expect(summary.author?.login).toBe("octocat");
+
+        // Check fields for each of the 3 calls:
+        const firstCallFields = mockedExecute.mock.calls.at(-3)?.[0].args.at(-1);
+        const secondCallFields = mockedExecute.mock.calls.at(-2)?.[0].args.at(-1);
+        const thirdCallFields = mockedExecute.mock.calls.at(-1)?.[0].args.at(-1);
+
+        expect(firstCallFields).toContain("autoMergeRequest");
+        expect(firstCallFields).toContain("reviewRequests");
+
+        expect(secondCallFields).not.toContain("autoMergeRequest");
+        expect(secondCallFields).toContain("reviewRequests");
+
+        expect(thirdCallFields).not.toContain("autoMergeRequest");
+        expect(thirdCallFields).not.toContain("reviewRequests");
+
+        // Verify subsequent call uses the learned supported fields directly:
+        mockedExecute.mockReturnValueOnce(Effect.succeed(output(successfulDetailJson)));
+        const secondSummary = yield* cli.getPullRequestSummary(input);
+        expect(secondSummary.title).toBe("Resilient summary");
         const fourthCallFields = mockedExecute.mock.calls.at(-1)?.[0].args.at(-1);
         expect(fourthCallFields).not.toContain("autoMergeRequest");
         expect(fourthCallFields).not.toContain("reviewRequests");
