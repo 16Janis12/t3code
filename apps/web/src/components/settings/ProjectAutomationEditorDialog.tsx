@@ -344,7 +344,7 @@ export function ProjectAutomationEditorDialog({
 
     let action: AutomationAction;
     if (actionType === "thread") {
-      const prompt = threadPrompt.trim();
+      const prompt = (threadPrompt ?? "").trim();
       if (!prompt) {
         setErrorMessage("Please enter a prompt template for the thread.");
         return;
@@ -737,7 +737,7 @@ export function ProjectAutomationEditorDialog({
                         </Button>
                       ) : null}
                     </div>
-                    {hasProviders && activeSelection && activeEntry ? (
+                    {hasProviders && activeSelection && activeEntry && instanceEntries ? (
                       <div className="flex flex-wrap items-center gap-1.5">
                         <ProviderModelPicker
                           activeInstanceId={activeSelection.instanceId}
@@ -747,13 +747,14 @@ export function ProjectAutomationEditorDialog({
                           modelOptionsByInstance={resolvedModelOptionsByInstance}
                           triggerVariant="outline"
                           triggerClassName="h-8 text-xs font-normal"
-                          onOpenProviderSetup={onOpenProviderSetup}
+                          {...(onOpenProviderSetup ? { onOpenProviderSetup } : {})}
                           onInstanceModelChange={(instanceId, model) => {
                             setSelectedModelSelection(createModelSelection(instanceId, model));
                           }}
                         />
                         <TraitsPicker
                           provider={activeEntry.driverKind}
+                          instanceId={activeEntry.instanceId}
                           models={activeEntry.models}
                           model={activeSelection.model}
                           prompt=""
