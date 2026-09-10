@@ -253,8 +253,6 @@ export interface ProviderServiceLiveOptions {
    * test see whether a credential was requested at all.
    */
   readonly issueMcpCredential?: typeof McpSessionRegistry.issueActiveMcpCredential;
-  /** Same seam as `issueMcpCredential`, for observing the deny path's revoke. */
-  readonly revokeMcpCredential?: typeof McpSessionRegistry.revokeActiveMcpThread;
 }
 
 interface TurnAnalyticsMetadata {
@@ -483,8 +481,6 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   );
   const issueMcpCredential =
     options?.issueMcpCredential ?? McpSessionRegistry.issueActiveMcpCredential;
-  const revokeMcpCredential =
-    options?.revokeMcpCredential ?? McpSessionRegistry.revokeActiveMcpThread;
   const fileSystem = yield* FileSystem.FileSystem;
   const runtimeEventPubSub = yield* PubSub.unbounded<ProviderRuntimeEvent>();
   const pendingCompactions = new Map<ThreadId, PendingCompaction>();
@@ -857,14 +853,8 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     yield* recordCompletedTurnProperties(properties);
   });
   /**
-   * Attach the `t3-code` MCP server to the session that is about to start.
+   * Whether the credential minted below may drive the user's browser.
    *
-   * This is the only place a credential is minted, so withholding one here is
-   * what disables agent browser access everywhere: every adapter already
-   * treats a missing session as "no MCP server", and the `/mcp` endpoint
-   * accepts nothing but tokens issued from this path.
-   */
-  /**
    * Deny on an unreadable settings file rather than letting the read failure
    * escape: adding `ServerSettingsError` to `ProviderServiceError` would widen
    * a union every caller handles, for a branch that only decides whether one
@@ -893,15 +883,20 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     ),
   );
 
+  /**
+   * Attach the `t3-code` MCP server to the session that is about to start.
+   *
+   * Every session gets a credential: the pull request toolkit is always on,
+   * since it only registers links on the session's own thread. Browser access
+   * is a capability on that credential, so turning the setting off withholds
+   * the preview tools without taking the server away. `issueActiveMcpCredential`
+   * revokes the thread's previous token first, which matters because a session
+   * restart (runtime mode, cwd, model) re-prepares without stopping.
+   */
   const prepareMcpSession = (threadId: ThreadId, providerInstanceId: ProviderInstanceId) =>
     Effect.gen(function* () {
-      const browserAccess = yield* agentBrowserAccessEnabled(threadId);
-      let credential: { config: McpProviderSession.McpProviderSessionConfig } | undefined;
-      if (!browserAccess) {
-        yield* revokeMcpCredential(threadId);
-      } else {
-        credential = yield* issueMcpCredential({ threadId, providerInstanceId });
-      }
+      const preview = yield* agentBrowserAccessEnabled(threadId);
+      const credential = yield* issueMcpCredential({ threadId, providerInstanceId, preview });
 
       const settings = yield* serverSettings.getSettings.pipe(
         Effect.catch(() => Effect.succeed(DEFAULT_SERVER_SETTINGS)),
@@ -935,7 +930,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
 
       const hasExternal = Object.keys(externalServers).length > 0;
 
-      if (!browserAccess && !hasExternal) {
+      if (!credential && !hasExternal) {
         yield* Effect.sync(() => McpProviderSession.clearMcpProviderSession(threadId));
         return undefined;
       }
@@ -949,6 +944,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         ...(credential?.config.authorizationHeader
           ? { authorizationHeader: credential.config.authorizationHeader }
           : {}),
+        ...(credential?.config.preview !== undefined ? { preview: credential.config.preview } : {}),
         ...(hasExternal ? { externalServers } : {}),
       };
 

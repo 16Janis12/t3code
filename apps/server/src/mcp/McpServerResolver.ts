@@ -10,7 +10,7 @@ import {
   type ServerSettings,
 } from "@t3tools/contracts";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
-import type { McpServer } from "@t3tools/effect-acp";
+import type { McpServer } from "effect-acp/schema";
 
 const McpConfigFileJson = fromLenientJson(McpConfigFile);
 const decodeMcpConfigFileJson = Schema.decodeUnknownOption(McpConfigFileJson);
@@ -47,7 +47,7 @@ export function resolveProjectDiscoveredServers(input: {
 }): ReadonlyArray<DiscoveredMcpServer> {
   const result = new Map<string, DiscoveredMcpServer>();
   const projectOverrides = input.projectId
-    ? input.settings.projectMcpServerOverrides[input.projectId] ?? {}
+    ? (input.settings.projectMcpServerOverrides[input.projectId] ?? {})
     : {};
 
   // 1. Add global servers from settings
@@ -101,18 +101,18 @@ export function resolveActiveMcpServers(input: {
 
 export function toAcpMcpServers(servers: Record<string, McpServerConfig>): Array<McpServer> {
   return Object.entries(servers).map(([name, config]): McpServer => {
-    if (config.type === "http") {
-      return {
-        type: "http" as const,
-        name,
-        url: config.url,
-        headers: Object.entries(config.headers ?? {}).map(([hName, value]) => ({
-          name: hName,
-          value,
-        })),
-      };
-    }
-    if (config.type === "sse") {
+    if ("url" in config) {
+      if (config.type === "http") {
+        return {
+          type: "http" as const,
+          name,
+          url: config.url,
+          headers: Object.entries(config.headers ?? {}).map(([hName, value]) => ({
+            name: hName,
+            value,
+          })),
+        };
+      }
       return {
         type: "sse" as const,
         name,
@@ -127,7 +127,7 @@ export function toAcpMcpServers(servers: Record<string, McpServerConfig>): Array
     return {
       name,
       command: config.command,
-      args: config.args ?? [],
+      args: [...(config.args ?? [])],
       env: Object.entries(config.env ?? {}).map(([eName, value]) => ({
         name: eName,
         value,
@@ -139,7 +139,7 @@ export function toAcpMcpServers(servers: Record<string, McpServerConfig>): Array
 export function toClaudeMcpServers(servers: Record<string, McpServerConfig>): Record<string, any> {
   const result: Record<string, any> = {};
   for (const [name, config] of Object.entries(servers)) {
-    if (config.type === "http" || config.type === "sse") {
+    if ("url" in config) {
       result[name] = {
         type: config.type,
         url: config.url,
@@ -166,13 +166,10 @@ export function toCodexCliArgs(servers: Record<string, McpServerConfig>): {
   const env: Record<string, string> = {};
 
   for (const [name, config] of Object.entries(servers)) {
-    if (config.type === "http" || config.type === "sse") {
+    if ("url" in config) {
       args.push("-c", `mcp_servers.${name}.url=${JSON.stringify(config.url)}`);
       if (config.headers && Object.keys(config.headers).length > 0) {
-        args.push(
-          "-c",
-          `mcp_servers.${name}.http_headers=${JSON.stringify(config.headers)}`,
-        );
+        args.push("-c", `mcp_servers.${name}.http_headers=${JSON.stringify(config.headers)}`);
       }
     } else {
       args.push("-c", `mcp_servers.${name}.command=${JSON.stringify(config.command)}`);
@@ -206,7 +203,7 @@ export function toOpenCodeMcpServers(servers: Record<string, McpServerConfig>): 
       };
 }> {
   return Object.entries(servers).map(([name, config]) => {
-    if (config.type === "http" || config.type === "sse") {
+    if ("url" in config) {
       return {
         name,
         config: {
@@ -225,9 +222,7 @@ export function toOpenCodeMcpServers(servers: Record<string, McpServerConfig>): 
       config: {
         type: "local" as const,
         command: [config.command, ...(config.args ?? [])],
-        ...(config.env && Object.keys(config.env).length > 0
-          ? { environment: config.env }
-          : {}),
+        ...(config.env && Object.keys(config.env).length > 0 ? { environment: config.env } : {}),
         enabled: true,
       },
     };

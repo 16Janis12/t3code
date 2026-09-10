@@ -1630,7 +1630,7 @@ const make = Effect.gen(function* () {
           ),
         );
 
-      if (responseResult && responseResult.steerTurn) {
+      if (responseResult && "steerTurn" in responseResult && responseResult.steerTurn) {
         const { text } = responseResult.steerTurn;
         const attachments =
           responseResult.steerTurn.attachments ??

@@ -33,10 +33,9 @@ const project: OrchestrationProjectShell = {
   title: "My Project",
   workspaceRoot: WORKSPACE_ROOT,
   defaultModelSelection: null,
-  defaultThreadEnvMode: null,
+  scripts: [],
   createdAt: "2026-09-08T00:00:00.000Z",
   updatedAt: "2026-09-08T00:00:00.000Z",
-  deletedAt: null,
 };
 
 interface HarnessOptions {
@@ -51,18 +50,16 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
   const executedScripts = yield* Ref.make<ReadonlyArray<ProcessRunInput>>([]);
   const ghCommands = yield* Ref.make<ReadonlyArray<ReadonlyArray<string>>>([]);
 
-  let uuidCounter = 0;
   const cryptoLayer = Layer.succeed(
     Crypto.Crypto,
     Crypto.make({
-      randomUUIDv4: Effect.sync(() => `uuid-${++uuidCounter}`),
-      randomBytes: (size) => new Uint8Array(size),
+      randomBytes: (size) => new Uint8Array(size).fill(1),
       digest: (_algorithm, data) => Effect.succeed(data),
     }),
   );
 
   const engineLayer = Layer.succeed(OrchestrationEngine.OrchestrationEngineService, {
-    dispatch: (command) =>
+    dispatch: (command: any) =>
       Ref.update(dispatchedCommands, (cmds) => [...cmds, command]).pipe(Effect.as({ sequence: 1 })),
     streamDomainEvents: Stream.empty,
     subscribeDomainEvents: Effect.succeed(Stream.empty),
@@ -78,7 +75,7 @@ const makeHarness = Effect.fn("makeHarness")(function* (options: HarnessOptions 
         projectSequence: 1,
         threadSequence: 1,
         snapshotSequence: 1,
-      } as OrchestrationShellSnapshot),
+      } as unknown as OrchestrationShellSnapshot),
   } as unknown as ProjectionSnapshotQuery.ProjectionSnapshotQueryShape);
 
   const projectFileLoaderLayer = Layer.succeed(T3ProjectFileLoader, {
@@ -275,7 +272,7 @@ describe("AutomationReactor", () => {
                   type: "thread",
                   prompt: "Run custom",
                   modelSelection: actionModelSelection,
-                  runtimeMode: "read-only",
+                  runtimeMode: "approval-required",
                 },
               },
             ],

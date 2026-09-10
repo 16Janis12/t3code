@@ -136,6 +136,8 @@ export const make = Effect.gen(function* () {
           text: renderedPrompt,
           attachments: [],
         },
+        runtimeMode: action.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         createdAt: nowIso,
       });
 
@@ -518,7 +520,7 @@ export const make = Effect.gen(function* () {
   return {
     start,
     drain: worker.drain,
-    pollOnce: (options?: { readonly now?: Date }) => pollAllProjects(options?.now),
+    pollOnce: (options?: { readonly now?: Date }) => Effect.scoped(pollAllProjects(options?.now)),
   } satisfies AutomationReactor["Service"];
 });
 

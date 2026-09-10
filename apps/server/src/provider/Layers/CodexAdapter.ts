@@ -2259,7 +2259,10 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         const codexMcpEnv: Record<string, string> = {};
         const codexMcpArgs: string[] = [];
         if (mcpSession?.endpoint && mcpSession?.authorizationHeader) {
-          codexMcpEnv.T3_MCP_BEARER_TOKEN = mcpSession.authorizationHeader.replace(/^Bearer\s+/, "");
+          codexMcpEnv.T3_MCP_BEARER_TOKEN = mcpSession.authorizationHeader.replace(
+            /^Bearer\s+/,
+            "",
+          );
           codexMcpArgs.push(
             "-c",
             `mcp_servers.t3-code.url=${mcpSession.endpoint}`,
@@ -2296,6 +2299,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
                   ...codexMcpEnv,
                 },
                 appServerArgs: codexMcpArgs,
+                browserToolsAvailable: mcpSession?.preview ?? false,
               }
             : {}),
         };

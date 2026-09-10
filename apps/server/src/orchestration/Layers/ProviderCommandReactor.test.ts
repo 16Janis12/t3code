@@ -3774,7 +3774,7 @@ describe("ProviderCommandReactor", () => {
     await harness.drain();
     expect(harness.sendTurn).toHaveBeenCalled();
     const sendTurnCall = harness.sendTurn.mock.calls[0]?.[0];
-    expect(sendTurnCall?.input).toBe("custom write-in answer");
+    expect((sendTurnCall as any)?.input).toBe("custom write-in answer");
   });
 
   it("normalizes stale Codex approval callbacks without faking approval resolution", async () => {

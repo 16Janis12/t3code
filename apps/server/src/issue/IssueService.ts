@@ -362,7 +362,7 @@ export const layer = Layer.effect(
           );
         }
 
-        const number = parseInt(match[1], 10);
+        const number = parseInt(match[1]!, 10);
         return yield* detail({ projectId: project.projectId, number });
       });
 

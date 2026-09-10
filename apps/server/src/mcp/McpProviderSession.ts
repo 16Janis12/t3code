@@ -12,6 +12,8 @@ export interface McpProviderSessionConfig {
   readonly providerInstanceId: ProviderInstanceId;
   readonly endpoint?: string | undefined;
   readonly authorizationHeader?: string | undefined;
+  /** Whether the credential grants the preview (browser) toolkit; the pull request toolkit always is. */
+  readonly preview?: boolean | undefined;
   readonly externalServers?: Readonly<Record<string, McpServerConfig>> | undefined;
 }
 
