@@ -33,6 +33,7 @@ describe("buildT3ProjectFileJsonSchema", () => {
 
     expect(Object.keys(schema.properties).sort()).toEqual([
       "$schema",
+      "automations",
       "defaultThreadEnvMode",
       "iconPath",
       "scripts",
