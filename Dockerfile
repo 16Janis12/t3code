@@ -39,11 +39,19 @@ RUN if [ -z "${GH_TOKEN}" ]; then \
     npm config delete //npm.pkg.github.com/:_authToken && \
     rm -rf /root/.npm
 
+# Entrypoint-Skript für automatische Updates und Prozessüberwachung installieren
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh && \
+    ln -s /usr/local/bin/entrypoint.sh /usr/local/bin/t3-update
+
 # Arbeitsverzeichnis auf das gemountete Workspaces-Volume legen
 WORKDIR /workspaces
 
 # T3 Code Standard-Port
 EXPOSE 3773
+
+# Entrypoint für Auto-Update und saubere Signalweiterleitung
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 # Server auf 0.0.0.0 starten, damit Anfragen über Tailscale akzeptiert werden
 CMD ["t3", "serve", "--host", "0.0.0.0"]
