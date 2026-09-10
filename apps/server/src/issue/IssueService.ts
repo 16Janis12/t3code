@@ -211,6 +211,10 @@ export const layer = Layer.effect(
           "assignees,author,closed,closedAt,comments,createdAt,id,labels,number,state,title,updatedAt,url",
         ];
 
+        if (project.repository) {
+          args.push("--repo", project.repository);
+        }
+
         if (input.state && input.state !== "all") {
           args.push("--state", input.state);
         } else if (input.state === "all") {
@@ -276,6 +280,10 @@ export const layer = Layer.effect(
           "assignees,author,body,closed,closedAt,comments,createdAt,id,labels,number,state,title,updatedAt,url",
         ];
 
+        if (project.repository) {
+          args.push("--repo", project.repository);
+        }
+
         const result = yield* githubCli
           .execute({
             cwd: project.workspaceRoot,
@@ -312,6 +320,10 @@ export const layer = Layer.effect(
         const project = yield* resolveProject(input.projectId);
 
         const args = ["issue", "create", "--title", input.title, "--body", input.body];
+
+        if (project.repository) {
+          args.push("--repo", project.repository);
+        }
 
         if (input.labels) {
           for (const label of input.labels) {
@@ -359,10 +371,14 @@ export const layer = Layer.effect(
         const project = yield* resolveProject(input.projectId);
 
         if (input.state === "closed") {
+          const closeArgs = ["issue", "close", String(input.number)];
+          if (project.repository) {
+            closeArgs.push("--repo", project.repository);
+          }
           yield* githubCli
             .execute({
               cwd: project.workspaceRoot,
-              args: ["issue", "close", String(input.number)],
+              args: closeArgs,
             })
             .pipe(
               Effect.mapError(
@@ -374,10 +390,14 @@ export const layer = Layer.effect(
               ),
             );
         } else if (input.state === "open") {
+          const reopenArgs = ["issue", "reopen", String(input.number)];
+          if (project.repository) {
+            reopenArgs.push("--repo", project.repository);
+          }
           yield* githubCli
             .execute({
               cwd: project.workspaceRoot,
-              args: ["issue", "reopen", String(input.number)],
+              args: reopenArgs,
             })
             .pipe(
               Effect.mapError(
@@ -392,6 +412,9 @@ export const layer = Layer.effect(
 
         if (input.title !== undefined || input.body !== undefined) {
           const editArgs = ["issue", "edit", String(input.number)];
+          if (project.repository) {
+            editArgs.push("--repo", project.repository);
+          }
           if (input.title !== undefined) {
             editArgs.push("--title", input.title);
           }
@@ -421,10 +444,15 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const project = yield* resolveProject(input.projectId);
 
+        const commentArgs = ["issue", "comment", String(input.number), "--body", input.body];
+        if (project.repository) {
+          commentArgs.push("--repo", project.repository);
+        }
+
         yield* githubCli
           .execute({
             cwd: project.workspaceRoot,
-            args: ["issue", "comment", String(input.number), "--body", input.body],
+            args: commentArgs,
           })
           .pipe(
             Effect.mapError(

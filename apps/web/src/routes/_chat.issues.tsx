@@ -25,7 +25,8 @@ import {
 } from "~/components/WorkspaceBreadcrumb";
 import { WorkspacePageContainer } from "~/components/WorkspacePageContainer";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
-import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
+import { useActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
+import { useHandleNewThread, useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { useClientSettings } from "~/hooks/useSettings";
 import { selectProjectGroupingSettings } from "~/logicalProject";
 import { cn } from "~/lib/utils";
@@ -69,6 +70,8 @@ function IssuesPage() {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const { environments } = useEnvironments();
   const projects = useProjects();
+  const activeTarget = useActiveProjectTarget();
+  const { defaultProjectRef } = useHandleNewThread();
   const sidebarProjectScopeKey = useUiStateStore((state) => state.sidebarProjectScopeKey);
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
 
@@ -97,6 +100,34 @@ function IssuesPage() {
     });
     if (scopedProject) return scopedProject;
 
+    // Check active project target (e.g. from current thread)
+    if (activeTarget) {
+      const targetFound = projects.find(
+        (p) =>
+          p.id === activeTarget.projectId &&
+          (!currentEnvironmentId || p.environmentId === currentEnvironmentId),
+      );
+      if (targetFound) return targetFound;
+    }
+
+    // Check default ordered project
+    if (defaultProjectRef) {
+      const defaultFound = projects.find(
+        (p) =>
+          p.id === defaultProjectRef.projectId &&
+          (!currentEnvironmentId || p.environmentId === defaultProjectRef.environmentId),
+      );
+      if (defaultFound) return defaultFound;
+    }
+
+    // Prefer a project with a repository identity
+    const repoProject = projects.find(
+      (p) =>
+        (!currentEnvironmentId || p.environmentId === currentEnvironmentId) &&
+        p.repositoryIdentity != null,
+    );
+    if (repoProject) return repoProject;
+
     return (
       projects.find((p) => !currentEnvironmentId || p.environmentId === currentEnvironmentId) ??
       projects[0]
@@ -108,6 +139,8 @@ function IssuesPage() {
     sidebarProjectScopeKey,
     projectGroupingSettings,
     primaryEnvironmentId,
+    activeTarget,
+    defaultProjectRef,
   ]);
 
   const stateFilter: IssueListState = searchParams.state ?? "open";

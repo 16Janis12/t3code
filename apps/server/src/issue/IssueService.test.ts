@@ -91,12 +91,14 @@ it.effect("lists issues and resolves repository", () =>
     assert.equal(result.issues[0]?.labels[0]?.name, "bug");
   }).pipe(
     Effect.provide(
-      makeTestEnv(() =>
-        Effect.succeed({
+      makeTestEnv((opts) => {
+        assert.deepInclude(opts.args, "--repo");
+        assert.deepInclude(opts.args, "16Janis12/t3code");
+        return Effect.succeed({
           stdout: JSON.stringify([sampleGhIssue]),
           stderr: "",
-        }),
-      ),
+        });
+      }),
     ),
   ),
 );
@@ -112,12 +114,14 @@ it.effect("gets issue detail with comments", () =>
     assert.equal(detail.comments[0]?.body, "First comment");
   }).pipe(
     Effect.provide(
-      makeTestEnv(() =>
-        Effect.succeed({
+      makeTestEnv((opts) => {
+        assert.deepInclude(opts.args, "--repo");
+        assert.deepInclude(opts.args, "16Janis12/t3code");
+        return Effect.succeed({
           stdout: JSON.stringify(sampleGhIssue),
           stderr: "",
-        }),
-      ),
+        });
+      }),
     ),
   ),
 );
@@ -133,6 +137,8 @@ it.effect("creates issue and fetches its detail", () =>
   }).pipe(
     Effect.provide(
       makeTestEnv((opts) => {
+        assert.deepInclude(opts.args, "--repo");
+        assert.deepInclude(opts.args, "16Janis12/t3code");
         if (opts.args[1] === "create") {
           return Effect.succeed({
             stdout: "https://github.com/16Janis12/t3code/issues/42\n",
@@ -159,6 +165,8 @@ it.effect("updates issue state and fetches updated detail", () =>
   }).pipe(
     Effect.provide(
       makeTestEnv((opts) => {
+        assert.deepInclude(opts.args, "--repo");
+        assert.deepInclude(opts.args, "16Janis12/t3code");
         if (opts.args[1] === "close") {
           return Effect.succeed({ stdout: "", stderr: "" });
         }
