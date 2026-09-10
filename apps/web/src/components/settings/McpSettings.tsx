@@ -5,7 +5,7 @@ import {
   type McpStdioServerConfig,
   type McpTransportKind,
 } from "@t3tools/contracts";
-import { PlusIcon, Trash2Icon, ServerIcon } from "lucide-react";
+import { PlusIcon, ServerIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 
 import { Badge } from "../ui/badge";
@@ -16,17 +16,13 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogPanel,
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
 import { Input } from "../ui/input";
-import {
-  Select,
-  SelectItem,
-  SelectPopup,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
+import { Label } from "../ui/label";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { toastManager } from "../ui/toast";
 import {
@@ -35,12 +31,30 @@ import {
   useUpdatePrimarySettings,
 } from "~/hooks/useSettings";
 
-import {
-  SettingResetButton,
-  SettingsRow,
-  SettingsSection,
-} from "./settingsLayout";
+import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+
+const TRANSPORT_LABELS: Record<McpTransportKind, string> = {
+  stdio: "stdio (local process)",
+  http: "http (remote server)",
+  sse: "sse (server-sent events)",
+};
+
+function parseCommandLineArgs(input: string): string[] {
+  const trimmed = input.trim();
+  if (!trimmed) return [];
+  const matches = trimmed.match(/[^\s"']+|"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'/g);
+  if (!matches) return [];
+  return matches.map((token) => {
+    if (token.startsWith('"') && token.endsWith('"')) {
+      return token.slice(1, -1).replace(/\\"/g, '"');
+    }
+    if (token.startsWith("'") && token.endsWith("'")) {
+      return token.slice(1, -1).replace(/\\'/g, "'");
+    }
+    return token;
+  });
+}
 
 export function McpSettingsSection() {
   const settings = usePrimarySettings();
@@ -81,89 +95,91 @@ export function McpSettingsSection() {
   };
 
   return (
-    <SettingsSection id="mcp" title="Model Context Protocol (MCP)">
-      <SettingsRow
-        {...searchableSetting("project-mcp-servers")}
-        description="Automatically discover and load MCP servers defined in .mcp.json or mcp.json in workspace roots."
-        resetAction={
-          enableProjectMcp !== DEFAULT_SERVER_SETTINGS.enableProjectMcpServers ? (
-            <SettingResetButton
-              label="reset project MCP servers"
-              onClick={handleResetProjectMcp}
+    <>
+      <SettingsSection id="mcp" title="Model Context Protocol (MCP)">
+        <SettingsRow
+          {...searchableSetting("project-mcp-servers")}
+          description="Automatically discover and load MCP servers defined in .mcp.json or mcp.json in workspace roots."
+          resetAction={
+            enableProjectMcp !== DEFAULT_SERVER_SETTINGS.enableProjectMcpServers ? (
+              <SettingResetButton
+                label="reset project MCP servers"
+                onClick={handleResetProjectMcp}
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              disabled={!primaryAvailable}
+              checked={enableProjectMcp}
+              onCheckedChange={handleToggleProjectMcp}
+              aria-label="Project MCP servers"
             />
-          ) : null
-        }
-        control={
-          <Switch
-            disabled={!primaryAvailable}
-            checked={enableProjectMcp}
-            onCheckedChange={handleToggleProjectMcp}
-            aria-label="Project MCP servers"
-          />
-        }
-      />
+          }
+        />
 
-      <div className="flex flex-col gap-3 pt-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <h4 className="text-sm font-medium text-foreground">Global MCP Servers</h4>
-            <p className="text-xs text-muted-foreground">
-              External MCP servers available across all provider sessions.
-            </p>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!primaryAvailable}
-            onClick={() => setIsAddOpen(true)}
-          >
-            <PlusIcon className="mr-1.5 h-3.5 w-3.5" />
-            Add Server
-          </Button>
-        </div>
-
-        {serverEntries.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 py-6 text-center">
-            <ServerIcon className="h-6 w-6 text-muted-foreground/60 mb-2" />
-            <p className="text-sm text-muted-foreground">No global MCP servers configured.</p>
-            <p className="text-xs text-muted-foreground/80 mt-0.5">
-              Add stdio, SSE, or HTTP servers to provide extra capabilities to your agents.
-            </p>
-          </div>
-        ) : (
-          <div className="flex flex-col divide-y divide-border/40 rounded-lg border border-border/60">
-            {serverEntries.map(([name, config]) => (
-              <div
-                key={name}
-                className="flex items-center justify-between p-3 transition-colors hover:bg-muted/30"
-              >
-                <div className="flex flex-col gap-1 min-w-0 pr-4">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm text-foreground truncate">{name}</span>
-                    <Badge variant="outline" className="text-[10px] uppercase font-mono px-1.5 py-0">
-                      {config.type ?? ("url" in config ? "http" : "stdio")}
-                    </Badge>
-                  </div>
-                  <div className="text-xs font-mono text-muted-foreground truncate max-w-lg">
-                    {"url" in config
-                      ? config.url
-                      : `${config.command}${config.args?.length ? ` ${config.args.join(" ")}` : ""}`}
-                  </div>
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                  onClick={() => setServerPendingDelete(name)}
-                  aria-label={`Remove MCP server ${name}`}
+        <SettingsRow
+          title="Global MCP servers"
+          description="External MCP servers available across all provider sessions."
+          serverScoped
+          control={
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!primaryAvailable}
+              onClick={() => setIsAddOpen(true)}
+            >
+              <PlusIcon className="mr-1.5 size-3.5" />
+              Add Server
+            </Button>
+          }
+        >
+          {serverEntries.length === 0 ? (
+            <div className="my-2 flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 py-6 text-center">
+              <ServerIcon className="mb-2 size-6 text-muted-foreground/60" />
+              <p className="text-sm text-muted-foreground">No global MCP servers configured.</p>
+              <p className="mt-0.5 text-xs text-muted-foreground/80">
+                Add stdio, SSE, or HTTP servers to provide extra capabilities to your agents.
+              </p>
+            </div>
+          ) : (
+            <div className="my-2 flex flex-col divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
+              {serverEntries.map(([name, config]) => (
+                <div
+                  key={name}
+                  className="flex items-center justify-between p-3 transition-colors hover:bg-muted/30"
                 >
-                  <Trash2Icon className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                  <div className="flex min-w-0 flex-col gap-1 pr-4">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium text-foreground">{name}</span>
+                      <Badge
+                        variant="outline"
+                        className="px-1.5 py-0 font-mono text-[10px] uppercase"
+                      >
+                        {config.type ?? ("url" in config ? "http" : "stdio")}
+                      </Badge>
+                    </div>
+                    <div className="max-w-lg truncate font-mono text-xs text-muted-foreground">
+                      {"url" in config
+                        ? config.url
+                        : `${config.command}${config.args?.length ? ` ${config.args.join(" ")}` : ""}`}
+                    </div>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="size-8 text-muted-foreground hover:text-destructive"
+                    onClick={() => setServerPendingDelete(name)}
+                    aria-label={`Remove MCP server ${name}`}
+                  >
+                    <Trash2Icon className="size-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </SettingsRow>
+      </SettingsSection>
 
       <AddMcpServerDialog
         open={isAddOpen}
@@ -187,16 +203,16 @@ export function McpSettingsSection() {
         open={serverPendingDelete !== null}
         onOpenChange={(open) => !open && setServerPendingDelete(null)}
       >
-        <DialogPopup>
+        <DialogPopup className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Remove MCP Server</DialogTitle>
             <DialogDescription>
-              Are you sure you want to remove the MCP server &ldquo;{serverPendingDelete}&rdquo;? Agents will no
-              longer have access to its tools.
+              Are you sure you want to remove the MCP server &ldquo;{serverPendingDelete}&rdquo;?
+              Agents will no longer have access to its tools.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+            <DialogClose render={<Button variant="outline">Cancel</Button>} />
             <Button
               variant="destructive"
               onClick={() => {
@@ -210,7 +226,7 @@ export function McpSettingsSection() {
           </DialogFooter>
         </DialogPopup>
       </Dialog>
-    </SettingsSection>
+    </>
   );
 }
 
@@ -221,7 +237,7 @@ interface AddMcpServerDialogProps {
   readonly existingNames: ReadonlyArray<string>;
 }
 
-function AddMcpServerDialog({
+export function AddMcpServerDialog({
   open,
   onOpenChange,
   onAddServer,
@@ -267,20 +283,26 @@ function AddMcpServerDialog({
       let env: Record<string, string> | undefined;
       if (envJson.trim()) {
         try {
-          env = JSON.parse(envJson.trim());
-          if (typeof env !== "object" || env === null || Array.isArray(env)) {
+          const parsed = JSON.parse(envJson.trim());
+          if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
             setError("Environment variables must be a JSON object.");
             return;
           }
+          const invalid = Object.values(parsed).some(
+            (v) => typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean",
+          );
+          if (invalid) {
+            setError("Environment variable values must be strings.");
+            return;
+          }
+          env = Object.fromEntries(Object.entries(parsed).map(([k, v]) => [k, String(v)]));
         } catch {
           setError("Invalid JSON for environment variables.");
           return;
         }
       }
 
-      const parsedArgs = args.trim()
-        ? args.trim().split(/\s+/).filter(Boolean)
-        : undefined;
+      const parsedArgs = args.trim() ? parseCommandLineArgs(args) : undefined;
 
       const config: McpStdioServerConfig = {
         type: "stdio",
@@ -294,7 +316,7 @@ function AddMcpServerDialog({
     } else {
       const trimmedUrl = url.trim();
       if (!trimmedUrl) {
-        setError("URL is required for remote transport.");
+        setError("Server URL is required.");
         return;
       }
       try {
@@ -307,11 +329,19 @@ function AddMcpServerDialog({
       let headers: Record<string, string> | undefined;
       if (headersJson.trim()) {
         try {
-          headers = JSON.parse(headersJson.trim());
-          if (typeof headers !== "object" || headers === null || Array.isArray(headers)) {
+          const parsed = JSON.parse(headersJson.trim());
+          if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
             setError("Headers must be a JSON object.");
             return;
           }
+          const invalid = Object.values(parsed).some(
+            (v) => typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean",
+          );
+          if (invalid) {
+            setError("Header values must be strings.");
+            return;
+          }
+          headers = Object.fromEntries(Object.entries(parsed).map(([k, v]) => [k, String(v)]));
         } catch {
           setError("Invalid JSON for headers.");
           return;
@@ -345,124 +375,136 @@ function AddMcpServerDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-3 py-2 text-sm">
-          {error && (
-            <div className="rounded-md bg-destructive/10 p-2.5 text-xs text-destructive">
-              {error}
+        <DialogPanel>
+          <form
+            id="add-mcp-server-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSave();
+            }}
+            className="grid gap-4"
+          >
+            {error && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-xs text-destructive">
+                {error}
+              </div>
+            )}
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="mcp-server-name">Server Name</Label>
+              <Input
+                id="mcp-server-name"
+                size="sm"
+                placeholder="e.g. filesystem"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setError(null);
+                }}
+                autoFocus
+              />
             </div>
-          )}
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-foreground">Server Name</label>
-            <Input
-              size="sm"
-              placeholder="e.g. filesystem"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                setError(null);
-              }}
-            />
-          </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="mcp-transport">Transport</Label>
+              <Select
+                value={transport}
+                onValueChange={(val) => {
+                  setTransport(val as McpTransportKind);
+                  setError(null);
+                }}
+              >
+                <SelectTrigger id="mcp-transport" size="sm">
+                  <SelectValue>{TRANSPORT_LABELS[transport]}</SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="start" alignItemWithTrigger={false}>
+                  <SelectItem value="stdio">stdio (local process)</SelectItem>
+                  <SelectItem value="http">http (remote server)</SelectItem>
+                  <SelectItem value="sse">sse (server-sent events)</SelectItem>
+                </SelectPopup>
+              </Select>
+            </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-foreground">Transport</label>
-            <Select
-              value={transport}
-              onValueChange={(val) => {
-                setTransport(val as McpTransportKind);
-                setError(null);
-              }}
-            >
-              <SelectTrigger size="sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectPopup align="start">
-                <SelectItem value="stdio">stdio (local process)</SelectItem>
-                <SelectItem value="http">http (remote server)</SelectItem>
-                <SelectItem value="sse">sse (server-sent events)</SelectItem>
-              </SelectPopup>
-            </Select>
-          </div>
+            {transport === "stdio" ? (
+              <>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="mcp-command">Command</Label>
+                  <Input
+                    id="mcp-command"
+                    size="sm"
+                    placeholder="e.g. npx"
+                    value={command}
+                    onChange={(e) => {
+                      setCommand(e.target.value);
+                      setError(null);
+                    }}
+                  />
+                </div>
 
-          {transport === "stdio" ? (
-            <>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-foreground">Command</label>
-                <Input
-                  size="sm"
-                  placeholder="e.g. npx"
-                  value={command}
-                  onChange={(e) => {
-                    setCommand(e.target.value);
-                    setError(null);
-                  }}
-                />
-              </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="mcp-args">Arguments</Label>
+                  <Input
+                    id="mcp-args"
+                    size="sm"
+                    placeholder="e.g. -y @modelcontextprotocol/server-filesystem /path"
+                    value={args}
+                    onChange={(e) => {
+                      setArgs(e.target.value);
+                      setError(null);
+                    }}
+                  />
+                </div>
 
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-foreground">Arguments</label>
-                <Input
-                  size="sm"
-                  placeholder="e.g. -y @modelcontextprotocol/server-filesystem /path"
-                  value={args}
-                  onChange={(e) => {
-                    setArgs(e.target.value);
-                    setError(null);
-                  }}
-                />
-              </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="mcp-env">Environment Variables (JSON object, optional)</Label>
+                  <Input
+                    id="mcp-env"
+                    size="sm"
+                    placeholder='{"API_KEY": "..."}'
+                    value={envJson}
+                    onChange={(e) => {
+                      setEnvJson(e.target.value);
+                      setError(null);
+                    }}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="mcp-url">Server URL</Label>
+                  <Input
+                    id="mcp-url"
+                    size="sm"
+                    placeholder="http://localhost:3000/mcp"
+                    value={url}
+                    onChange={(e) => {
+                      setUrl(e.target.value);
+                      setError(null);
+                    }}
+                  />
+                </div>
 
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-foreground">
-                  Environment Variables (JSON object, optional)
-                </label>
-                <Input
-                  size="sm"
-                  placeholder='{"API_KEY": "..."}'
-                  value={envJson}
-                  onChange={(e) => {
-                    setEnvJson(e.target.value);
-                    setError(null);
-                  }}
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-foreground">Server URL</label>
-                <Input
-                  size="sm"
-                  placeholder="http://localhost:3000/mcp"
-                  value={url}
-                  onChange={(e) => {
-                    setUrl(e.target.value);
-                    setError(null);
-                  }}
-                />
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-foreground">
-                  Headers (JSON object, optional)
-                </label>
-                <Input
-                  size="sm"
-                  placeholder='{"Authorization": "Bearer ..."}'
-                  value={headersJson}
-                  onChange={(e) => {
-                    setHeadersJson(e.target.value);
-                    setError(null);
-                  }}
-                />
-              </div>
-            </>
-          )}
-        </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="mcp-headers">Headers (JSON object, optional)</Label>
+                  <Input
+                    id="mcp-headers"
+                    size="sm"
+                    placeholder='{"Authorization": "Bearer ..."}'
+                    value={headersJson}
+                    onChange={(e) => {
+                      setHeadersJson(e.target.value);
+                      setError(null);
+                    }}
+                  />
+                </div>
+              </>
+            )}
+          </form>
+        </DialogPanel>
 
         <DialogFooter>
-          <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+          <DialogClose render={<Button variant="outline">Cancel</Button>} />
           <Button onClick={handleSave}>Save Server</Button>
         </DialogFooter>
       </DialogPopup>
