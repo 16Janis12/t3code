@@ -228,6 +228,10 @@ export const make = Effect.gen(function* () {
 
     // 2. Evaluate GitHub Pull Request Automations
     if (prAutomations.length > 0) {
+      const repoSlug =
+        project.repositoryIdentity?.owner && project.repositoryIdentity?.name
+          ? `${project.repositoryIdentity.owner}/${project.repositoryIdentity.name}`
+          : undefined;
       const ghPrEffect = githubCli
         .execute({
           cwd: project.workspaceRoot,
@@ -240,6 +244,7 @@ export const make = Effect.gen(function* () {
             "30",
             "--json",
             "number,title,state,updatedAt,url,headRefName,baseRefName,isDraft",
+            ...(repoSlug ? ["--repo", repoSlug] : []),
           ],
         })
         .pipe(
@@ -347,6 +352,10 @@ export const make = Effect.gen(function* () {
 
     // 3. Evaluate GitHub Issue Automations
     if (issueAutomations.length > 0) {
+      const repoSlug =
+        project.repositoryIdentity?.owner && project.repositoryIdentity?.name
+          ? `${project.repositoryIdentity.owner}/${project.repositoryIdentity.name}`
+          : undefined;
       const ghIssueEffect = githubCli
         .execute({
           cwd: project.workspaceRoot,
@@ -359,6 +368,7 @@ export const make = Effect.gen(function* () {
             "30",
             "--json",
             "number,title,state,updatedAt,url,labels,assignees",
+            ...(repoSlug ? ["--repo", repoSlug] : []),
           ],
         })
         .pipe(
