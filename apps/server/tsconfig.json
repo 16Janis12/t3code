@@ -2,7 +2,15 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "types": ["node"],
-    "lib": ["ESNext", "esnext.disposable"]
+    "lib": ["ESNext", "esnext.disposable"],
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnosticSeverity": {
+          "deterministicKeys": "off"
+        }
+      }
+    ]
   },
   "include": ["src", "vite.config.ts", "scripts", "integration", "../../scripts/lib"]
 }
