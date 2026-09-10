@@ -155,10 +155,18 @@ export const AutomationCronTrigger = Schema.Struct({
 });
 export type AutomationCronTrigger = typeof AutomationCronTrigger.Type;
 
+export const AutomationManualTrigger = Schema.Struct({
+  type: Schema.Literal("manual"),
+}).annotate({
+  description: "Trigger that fires manually on-demand.",
+});
+export type AutomationManualTrigger = typeof AutomationManualTrigger.Type;
+
 export const AutomationTrigger = Schema.Union([
   AutomationCronTrigger,
   AutomationGitHubPrTrigger,
   AutomationGitHubIssueTrigger,
+  AutomationManualTrigger,
 ]).annotate({
   description: "Trigger conditions for an automation.",
 });

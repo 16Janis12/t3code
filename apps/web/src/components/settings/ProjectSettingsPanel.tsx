@@ -1426,6 +1426,7 @@ function ProjectDetail({
           ) : null}
           <ProjectAutomationsSection
             environmentId={selectedCheckout.environmentId}
+            projectId={selectedCheckout.id}
             workspaceRoot={selectedCheckout.workspaceRoot}
             t3File={t3File}
             disabled={isSavingScripts}
@@ -1441,9 +1442,11 @@ function ProjectDetail({
           />
           <ProjectJobsSection
             environmentId={selectedCheckout.environmentId}
+            projectId={selectedCheckout.id}
             workspaceRoot={selectedCheckout.workspaceRoot}
             t3File={t3File}
             disabled={isSavingScripts}
+            defaultModelSelection={resolvedSelection}
           />
         </SettingsSection>
 

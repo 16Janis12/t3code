@@ -1,18 +1,22 @@
 import {
+  formatJobTurnPrompt,
   resolveJob,
   T3_PROJECT_FILE_NAME,
   type EnvironmentId,
   type ModelSelection,
+  type ProjectId,
   type ProviderInstanceId,
   type T3ProjectFile,
   type T3ProjectFileAutomation,
 } from "@t3tools/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import {
   BotIcon,
   ClockIcon,
   GitPullRequestIcon,
   CircleDotIcon,
   PencilIcon,
+  PlayIcon,
   PlusIcon,
   TerminalIcon,
   Trash2Icon,
@@ -24,7 +28,9 @@ import {
   setProjectFileQueryData,
 } from "~/components/files/projectFilesQueryState";
 import { type T3ProjectFileState } from "~/hooks/useT3ProjectFileScripts";
+import { newMessageId, newThreadId } from "~/lib/utils";
 import { projectEnvironment } from "~/state/projects";
+import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
@@ -36,17 +42,21 @@ import { SettingsRow } from "./settingsLayout";
 
 export interface ProjectAutomationsSectionProps {
   readonly environmentId: EnvironmentId;
+  readonly projectId?: ProjectId | undefined;
   readonly workspaceRoot: string;
   readonly t3File: T3ProjectFileState;
-  readonly disabled?: boolean;
-  readonly instanceEntries?: ReadonlyArray<ProviderInstanceEntry>;
-  readonly modelOptionsByInstance?: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
-  readonly defaultModelSelection?: ModelSelection | null;
-  readonly onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
+  readonly disabled?: boolean | undefined;
+  readonly instanceEntries?: ReadonlyArray<ProviderInstanceEntry> | undefined;
+  readonly modelOptionsByInstance?:
+    | ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>
+    | undefined;
+  readonly defaultModelSelection?: ModelSelection | null | undefined;
+  readonly onOpenProviderSetup?: ((instanceId: ProviderInstanceId) => void) | undefined;
 }
 
 export function ProjectAutomationsSection({
   environmentId,
+  projectId,
   workspaceRoot,
   t3File,
   disabled = false,
@@ -62,6 +72,135 @@ export function ProjectAutomationsSection({
   const writeProjectFile = useAtomCommand(projectEnvironment.writeFile, {
     reportFailure: false,
   });
+
+  const navigate = useNavigate();
+  const createThread = useAtomCommand(threadEnvironment.create, { reportFailure: false });
+  const startThreadTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
+  const [runningAutomationId, setRunningAutomationId] = useState<string | null>(null);
+
+  const handleRunAutomation = async (automation: T3ProjectFileAutomation) => {
+    if (automation.action.type === "thread") {
+      if (!projectId) {
+        toastManager.add({
+          type: "error",
+          title: "Cannot run automation",
+          description: "Project information is not available.",
+        });
+        return;
+      }
+
+      setRunningAutomationId(automation.id);
+      try {
+        const job = resolveJob(automation.action.jobId, t3File.jobs);
+        const threadId = newThreadId();
+        const messageId = newMessageId();
+        const nowIso = new Date().toISOString();
+
+        const defaultTitle = job
+          ? `[${job.name}] ${automation.name}`
+          : `[Automation] ${automation.name}`;
+        const threadTitle = automation.action.title ?? defaultTitle;
+
+        const basePrompt =
+          automation.action.prompt ??
+          job?.promptTemplate ??
+          `Execute automation: ${automation.name}`;
+        const finalPrompt = job ? formatJobTurnPrompt(job, basePrompt) : basePrompt;
+        const fallbackModelSelection: ModelSelection = defaultModelSelection ?? {
+          instanceId: "default" as ProviderInstanceId,
+          model: "default",
+        };
+        const createThreadModelSelection: ModelSelection =
+          automation.action.modelSelection ?? job?.modelSelection ?? fallbackModelSelection;
+        const turnModelSelection =
+          automation.action.modelSelection ??
+          job?.modelSelection ??
+          defaultModelSelection ??
+          undefined;
+        const runtimeMode =
+          automation.action.runtimeMode ?? job?.runtimeMode ?? "approval-required";
+
+        const createResult = await createThread({
+          environmentId,
+          input: {
+            threadId,
+            projectId,
+            title: threadTitle,
+            modelSelection: createThreadModelSelection,
+            runtimeMode,
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            createdAt: nowIso,
+          },
+        });
+
+        if (createResult._tag === "Failure") {
+          toastManager.add({
+            type: "error",
+            title: "Failed to create thread",
+            description: "Could not create thread for automation.",
+          });
+          return;
+        }
+
+        const turnResult = await startThreadTurn({
+          environmentId,
+          input: {
+            threadId,
+            message: {
+              messageId,
+              role: "user",
+              text: finalPrompt,
+              attachments: [],
+            },
+            modelSelection: turnModelSelection,
+            titleSeed: threadTitle,
+            runtimeMode,
+            interactionMode: "default",
+            createdAt: nowIso,
+          },
+        });
+
+        if (turnResult._tag === "Failure") {
+          toastManager.add({
+            type: "error",
+            title: "Failed to start thread turn",
+            description: "Could not start thread turn.",
+          });
+          return;
+        }
+
+        toastManager.add({
+          type: "success",
+          title: `Automation "${automation.name}" triggered`,
+          description: "New agent thread created.",
+        });
+
+        void navigate({
+          to: "/$environmentId/$threadId",
+          params: {
+            environmentId,
+            threadId,
+          },
+        });
+      } catch (err) {
+        toastManager.add({
+          type: "error",
+          title: "Failed to run automation",
+          description: String(err),
+        });
+      } finally {
+        setRunningAutomationId(null);
+      }
+    } else {
+      toastManager.add({
+        type: "info",
+        title: `Script automation "${automation.name}"`,
+        description: `Command: ${automation.action.command ?? automation.action.scriptName}`,
+      });
+    }
+  };
 
   const automations = t3File.automations;
 
@@ -211,6 +350,9 @@ export function ProjectAutomationsSection({
             triggerIcon = <CircleDotIcon className="size-4 shrink-0 text-sky-500/80" />;
             const events = automation.trigger.events?.join(", ") ?? "opened";
             triggerSummary = `issue: ${events}`;
+          } else if (automation.trigger.type === "manual") {
+            triggerIcon = <PlayIcon className="size-4 shrink-0 text-violet-500/80" />;
+            triggerSummary = "manual";
           }
 
           let actionSummary = "";
@@ -258,6 +400,17 @@ export function ProjectAutomationsSection({
               }
               control={
                 <div className="flex items-center gap-2">
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    className="shrink-0 gap-1 text-xs"
+                    disabled={disabled || isSaving || runningAutomationId === automation.id}
+                    onClick={() => void handleRunAutomation(automation)}
+                    aria-label={`Run ${automation.name}`}
+                  >
+                    <PlayIcon className="size-3 text-emerald-500" />
+                    {runningAutomationId === automation.id ? "Running..." : "Run"}
+                  </Button>
                   <Switch
                     checked={isEnabled}
                     disabled={disabled || isSaving}

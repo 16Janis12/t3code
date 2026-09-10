@@ -16,6 +16,10 @@ vi.mock("~/state/use-atom-command", () => ({
   useAtomCommand: () => vi.fn(),
 }));
 
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => vi.fn(),
+}));
+
 import { ProjectJobsSection } from "./ProjectJobsSection";
 
 describe("ProjectJobsSection", () => {
@@ -42,6 +46,7 @@ describe("ProjectJobsSection", () => {
     expect(markup).toContain("Feature Refiner");
     expect(markup).toContain("Bug Triager");
     expect(markup).toContain("Add custom job");
+    expect(markup).toContain("Launch");
   });
 
   it("renders custom project jobs defined in t3.json", () => {

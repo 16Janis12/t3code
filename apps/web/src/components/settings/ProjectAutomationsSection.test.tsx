@@ -26,6 +26,10 @@ vi.mock("~/state/use-atom-command", () => ({
   useAtomCommand: () => vi.fn(),
 }));
 
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => vi.fn(),
+}));
+
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import { ProjectAutomationsSection } from "./ProjectAutomationsSection";
 

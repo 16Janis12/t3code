@@ -12,7 +12,14 @@ import {
   type T3ProjectFileJob,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
-import { BotIcon, ClockIcon, GitPullRequestIcon, CircleDotIcon, TerminalIcon } from "lucide-react";
+import {
+  BotIcon,
+  ClockIcon,
+  GitPullRequestIcon,
+  CircleDotIcon,
+  PlayIcon,
+  TerminalIcon,
+} from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
 
 import { ProviderModelPicker } from "~/components/chat/ProviderModelPicker";
@@ -74,11 +81,13 @@ export interface ProjectAutomationEditorDialogProps {
   readonly automation: T3ProjectFileAutomation | null;
   readonly existingIds: ReadonlyArray<string>;
   readonly onSave: (automation: T3ProjectFileAutomation) => void;
-  readonly instanceEntries?: ReadonlyArray<ProviderInstanceEntry>;
-  readonly modelOptionsByInstance?: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
-  readonly defaultModelSelection?: ModelSelection | null;
-  readonly onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
-  readonly projectJobs?: ReadonlyArray<T3ProjectFileJob>;
+  readonly instanceEntries?: ReadonlyArray<ProviderInstanceEntry> | undefined;
+  readonly modelOptionsByInstance?:
+    | ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>
+    | undefined;
+  readonly defaultModelSelection?: ModelSelection | null | undefined;
+  readonly onOpenProviderSetup?: ((instanceId: ProviderInstanceId) => void) | undefined;
+  readonly projectJobs?: ReadonlyArray<T3ProjectFileJob> | undefined;
 }
 
 export function ProjectAutomationEditorDialog({
@@ -100,8 +109,8 @@ export function ProjectAutomationEditorDialog({
   const [idManuallyEdited, setIdManuallyEdited] = useState(() => Boolean(automation));
   const [enabled, setEnabled] = useState(() => (automation ? (automation.enabled ?? true) : true));
 
-  const [triggerType, setTriggerType] = useState<"cron" | "github_pr" | "github_issue">(() =>
-    automation ? automation.trigger.type : "cron",
+  const [triggerType, setTriggerType] = useState<"cron" | "github_pr" | "github_issue" | "manual">(
+    () => (automation ? automation.trigger.type : "cron"),
   );
   const [cronSchedule, setCronSchedule] = useState(() =>
     automation?.trigger.type === "cron" ? automation.trigger.schedule : "0 9 * * 1-5",
@@ -160,7 +169,7 @@ export function ProjectAutomationEditorDialog({
     if (firstEntry && firstEntry.models.length > 0) {
       return {
         instanceId: firstEntry.instanceId,
-        model: firstEntry.models[0].id,
+        model: firstEntry.models[0]?.slug ?? "",
       };
     }
     return null;
@@ -182,7 +191,7 @@ export function ProjectAutomationEditorDialog({
     if (effectiveSelection && effectiveSelection.instanceId === activeEntry.instanceId) {
       return effectiveSelection;
     }
-    const defaultModel = activeEntry.models[0]?.id ?? "";
+    const defaultModel = activeEntry.models[0]?.slug ?? "";
     return {
       instanceId: activeEntry.instanceId,
       model: defaultModel,
@@ -315,7 +324,7 @@ export function ProjectAutomationEditorDialog({
         events: prEvents,
         ...(branches.length > 0 ? { targetBranches: branches } : {}),
       };
-    } else {
+    } else if (triggerType === "github_issue") {
       if (issueEvents.length === 0) {
         setErrorMessage("Please select at least one Issue event.");
         return;
@@ -329,6 +338,8 @@ export function ProjectAutomationEditorDialog({
         events: issueEvents,
         ...(labels.length > 0 ? { labels } : {}),
       };
+    } else {
+      trigger = { type: "manual" };
     }
 
     let action: AutomationAction;
@@ -438,7 +449,7 @@ export function ProjectAutomationEditorDialog({
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Trigger
               </Label>
-              <div className="grid grid-cols-3 gap-1.5 rounded-lg border border-border/60 bg-muted/40 p-1">
+              <div className="grid grid-cols-2 gap-1.5 rounded-lg border border-border/60 bg-muted/40 p-1 sm:grid-cols-4">
                 <button
                   type="button"
                   className={`flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition-colors ${
@@ -474,6 +485,18 @@ export function ProjectAutomationEditorDialog({
                 >
                   <CircleDotIcon className="size-3.5" />
                   GitHub Issue
+                </button>
+                <button
+                  type="button"
+                  className={`flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition-colors ${
+                    triggerType === "manual"
+                      ? "bg-background text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setTriggerType("manual")}
+                >
+                  <PlayIcon className="size-3.5" />
+                  Manual
                 </button>
               </div>
 
@@ -720,7 +743,7 @@ export function ProjectAutomationEditorDialog({
                           activeInstanceId={activeSelection.instanceId}
                           model={activeSelection.model}
                           lockedProvider={null}
-                          instanceEntries={instanceEntries}
+                          instanceEntries={instanceEntries ?? []}
                           modelOptionsByInstance={resolvedModelOptionsByInstance}
                           triggerVariant="outline"
                           triggerClassName="h-8 text-xs font-normal"
@@ -730,14 +753,17 @@ export function ProjectAutomationEditorDialog({
                           }}
                         />
                         <TraitsPicker
-                          provider={activeEntry.driverKind as ProviderDriverKind}
-                          instanceId={activeEntry.instanceId}
+                          provider={activeEntry.driverKind}
                           models={activeEntry.models}
                           model={activeSelection.model}
                           prompt=""
                           onPromptChange={() => {}}
-                          options={activeSelection.options}
-                          onChange={(options) =>
+                          modelOptions={activeSelection.options ?? []}
+                          allowPromptInjectedEffort={false}
+                          planModeEnabled={false}
+                          triggerVariant="outline"
+                          triggerClassName="h-8 text-xs font-normal"
+                          onModelOptionsChange={(options) =>
                             setSelectedModelSelection(
                               createModelSelection(
                                 activeSelection.instanceId,
