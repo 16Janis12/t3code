@@ -253,11 +253,10 @@ function IssuesPage() {
       input: {
         projectId: activeProject?.id,
         state: stateFilter,
-        search: searchQuery || undefined,
         limit: 100,
       },
     });
-  }, [currentEnvironmentId, activeProject?.id, stateFilter, searchQuery]);
+  }, [currentEnvironmentId, activeProject?.id, stateFilter]);
 
   const {
     data: listData,
