@@ -12,7 +12,7 @@ let currentSettings = {
   ...DEFAULT_UNIFIED_SETTINGS,
   mcpServers: {
     existingServer: {
-      transport: "stdio" as const,
+      type: "stdio" as const,
       command: "node",
       args: ["server.js"],
     },
@@ -34,6 +34,7 @@ vi.mock("~/components/ui/dialog", () => ({
   DialogHeader: ({ children }: any) => <div>{children}</div>,
   DialogTitle: ({ children }: any) => <div>{children}</div>,
   DialogDescription: ({ children }: any) => <div>{children}</div>,
+  DialogPanel: ({ children }: any) => <div>{children}</div>,
   DialogFooter: ({ children }: any) => <div>{children}</div>,
   DialogClose: ({ render, children }: any) => render || <button>{children}</button>,
 }));
@@ -49,7 +50,7 @@ beforeEach(() => {
     ...DEFAULT_UNIFIED_SETTINGS,
     mcpServers: {
       existingServer: {
-        transport: "stdio" as const,
+        type: "stdio" as const,
         command: "node",
         args: ["server.js"],
       },
@@ -80,7 +81,7 @@ describe("McpSettingsSection", () => {
     expect(serverName.length).toBeGreaterThan(0);
   });
 
-  it("opens add server dialog and saves a stdio server", async () => {
+  it("opens add server dialog and saves a stdio server with quoted arguments via button click", async () => {
     act(() => {
       renderer = create(
         <StrictMode>
@@ -111,7 +112,14 @@ describe("McpSettingsSection", () => {
       placeholder: "e.g. -y @modelcontextprotocol/server-filesystem /path",
     });
     await act(() => {
-      argsInput.props.onChange({ target: { value: "-y @mcp/server" } });
+      argsInput.props.onChange({ target: { value: '-y "@mcp/server with spaces"' } });
+    });
+
+    const envInput = root.findByProps({
+      placeholder: '{"API_KEY": "..."}',
+    });
+    await act(() => {
+      envInput.props.onChange({ target: { value: '{"API_KEY": "secret", "PORT": "3000"}' } });
     });
 
     const saveButtons = root.findAll((el) => el.children?.includes("Save Server"));
@@ -125,7 +133,51 @@ describe("McpSettingsSection", () => {
         testServer: {
           type: "stdio",
           command: "npx",
-          args: ["-y", "@mcp/server"],
+          args: ["-y", "@mcp/server with spaces"],
+          env: {
+            API_KEY: "secret",
+            PORT: "3000",
+          },
+        },
+      },
+    });
+  });
+
+  it("submits form on enter (form submit event)", async () => {
+    act(() => {
+      renderer = create(
+        <StrictMode>
+          <McpSettingsSection />
+        </StrictMode>,
+      );
+    });
+
+    const root = renderer!.root;
+    const addButtons = root.findAll((el) => el.children?.includes("Add Server"));
+    await act(() => {
+      addButtons[0]!.props.onClick();
+    });
+
+    const nameInput = root.findByProps({ placeholder: "e.g. filesystem" });
+    await act(() => {
+      nameInput.props.onChange({ target: { value: "keyboardServer" } });
+    });
+
+    const cmdInput = root.findByProps({ placeholder: "e.g. npx" });
+    await act(() => {
+      cmdInput.props.onChange({ target: { value: "python" } });
+    });
+
+    const form = root.findByProps({ id: "add-mcp-server-form" });
+    await act(() => {
+      form.props.onSubmit({ preventDefault: vi.fn() });
+    });
+
+    expect(mockUpdateSettings).toHaveBeenCalledWith({
+      mcpServers: {
+        keyboardServer: {
+          type: "stdio",
+          command: "python",
         },
       },
     });
