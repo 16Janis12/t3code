@@ -16,8 +16,10 @@ import {
   DEFAULT_MODEL,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
+  formatJobTurnPrompt,
   MessageId,
   ProviderInstanceId,
+  resolveJob,
   ThreadId,
   type AutomationGitHubIssueEvent,
   type AutomationGitHubIssueTrigger,
@@ -91,11 +93,19 @@ export const make = Effect.gen(function* () {
     const action = automation.action;
 
     if (action.type === "thread") {
-      const renderedTitle = renderTemplate(
-        action.title ?? `[Automation] ${automation.name}`,
-        context,
-      );
-      const renderedPrompt = renderTemplate(action.prompt, context);
+      const job = resolveJob(action.jobId, projectFile.jobs);
+
+      const defaultTitle = job
+        ? `[${job.name}] ${automation.name}`
+        : `[Automation] ${automation.name}`;
+      const renderedTitle = renderTemplate(action.title ?? defaultTitle, context);
+
+      const rawPrompt = action.prompt ?? job?.promptTemplate ?? "";
+      let renderedPrompt = renderTemplate(rawPrompt, context);
+      if (job) {
+        renderedPrompt = formatJobTurnPrompt(job, renderedPrompt);
+      }
+
       const threadUuid = yield* crypto.randomUUIDv4;
       const cmd1Uuid = yield* crypto.randomUUIDv4;
       const cmd2Uuid = yield* crypto.randomUUIDv4;
@@ -108,10 +118,13 @@ export const make = Effect.gen(function* () {
       const nowIso = new Date().toISOString();
 
       const modelSelection: ModelSelection = action.modelSelection ??
+        job?.modelSelection ??
         project.defaultModelSelection ?? {
           instanceId: ProviderInstanceId.make("codex"),
           model: DEFAULT_MODEL,
         };
+
+      const runtimeMode = action.runtimeMode ?? job?.runtimeMode ?? DEFAULT_RUNTIME_MODE;
 
       yield* engine.dispatch({
         type: "thread.create",
@@ -120,7 +133,7 @@ export const make = Effect.gen(function* () {
         projectId: project.id,
         title: renderedTitle,
         modelSelection,
-        runtimeMode: action.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+        runtimeMode,
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         branch: null,
         worktreePath: null,
@@ -137,7 +150,7 @@ export const make = Effect.gen(function* () {
           text: renderedPrompt,
           attachments: [],
         },
-        runtimeMode: action.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+        runtimeMode,
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         createdAt: nowIso,
       });
@@ -146,6 +159,7 @@ export const make = Effect.gen(function* () {
         automationId: automation.id,
         projectId: project.id,
         threadId,
+        jobId: job?.id,
       });
     } else if (action.type === "script") {
       let commandStr = action.command;
@@ -243,7 +257,7 @@ export const make = Effect.gen(function* () {
             "--limit",
             "30",
             "--json",
-            "number,title,state,updatedAt,url,headRefName,baseRefName,isDraft",
+            "number,title,state,updatedAt,url,headRefName,baseRefName,isDraft,body",
             ...(repoSlug ? ["--repo", repoSlug] : []),
           ],
         })
@@ -327,6 +341,7 @@ export const make = Effect.gen(function* () {
                     headRefName: currentHeadRef,
                     baseRefName: currentBaseRef,
                     isDraft: Boolean(raw.isDraft),
+                    body: String(raw.body ?? ""),
                   },
                   project: {
                     id: project.id,
@@ -367,7 +382,7 @@ export const make = Effect.gen(function* () {
             "--limit",
             "30",
             "--json",
-            "number,title,state,updatedAt,url,labels,assignees",
+            "number,title,state,updatedAt,url,labels,assignees,body",
             ...(repoSlug ? ["--repo", repoSlug] : []),
           ],
         })
@@ -459,6 +474,7 @@ export const make = Effect.gen(function* () {
                     state: currentState,
                     url: String(raw.url ?? ""),
                     labels: labelsArray,
+                    body: String(raw.body ?? ""),
                   },
                   project: {
                     id: project.id,

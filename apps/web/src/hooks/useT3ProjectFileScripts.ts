@@ -3,6 +3,7 @@ import {
   type EnvironmentId,
   type T3ProjectFile,
   type T3ProjectFileAutomation,
+  type T3ProjectFileJob,
   type T3ProjectFileScript,
 } from "@t3tools/contracts";
 import { parseT3ProjectFile } from "@t3tools/shared/t3ProjectFile";
@@ -12,6 +13,7 @@ import { useProjectFileQuery } from "~/components/files/projectFilesQueryState";
 
 const NO_SCRIPTS: ReadonlyArray<T3ProjectFileScript> = [];
 const NO_AUTOMATIONS: ReadonlyArray<T3ProjectFileAutomation> = [];
+const NO_JOBS: ReadonlyArray<T3ProjectFileJob> = [];
 
 export interface T3ProjectFileState {
   /**
@@ -26,6 +28,7 @@ export interface T3ProjectFileState {
   file: T3ProjectFile | null;
   scripts: ReadonlyArray<T3ProjectFileScript>;
   automations: ReadonlyArray<T3ProjectFileAutomation>;
+  jobs: ReadonlyArray<T3ProjectFileJob>;
   rawContents: string | null;
 }
 
@@ -47,6 +50,7 @@ export function useT3ProjectFileState(
         file: null,
         scripts: NO_SCRIPTS,
         automations: NO_AUTOMATIONS,
+        jobs: NO_JOBS,
         rawContents: null,
       } as const;
     }
@@ -57,6 +61,7 @@ export function useT3ProjectFileState(
         file: null,
         scripts: NO_SCRIPTS,
         automations: NO_AUTOMATIONS,
+        jobs: NO_JOBS,
         rawContents: contents,
       } as const;
     }
@@ -65,6 +70,7 @@ export function useT3ProjectFileState(
       file,
       scripts: file.scripts ?? NO_SCRIPTS,
       automations: file.automations ?? NO_AUTOMATIONS,
+      jobs: file.jobs ?? NO_JOBS,
       rawContents: contents,
     } as const;
   }, [contents, isPending]);

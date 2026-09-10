@@ -497,4 +497,127 @@ describe("AutomationReactor", () => {
       }),
     ),
   );
+
+  it.effect(
+    "executes thread action with a builtin job and injects role instructions and default title",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fixture = yield* makeHarness({
+            projectFile: {
+              automations: [
+                {
+                  id: "pr-security-audit",
+                  name: "Security Audit",
+                  trigger: {
+                    type: "cron",
+                    schedule: "30 9 * * *",
+                  },
+                  action: {
+                    type: "thread",
+                    jobId: "security-reviewer",
+                    prompt: "Audit codebase for security holes",
+                  },
+                },
+              ],
+            },
+          });
+
+          const reactor = yield* AutomationReactor.AutomationReactor.pipe(
+            Effect.provide(fixture.reactorLayer),
+          );
+
+          yield* reactor.pollOnce({ now: new Date("2026-09-08T09:30:00.000Z") });
+
+          const commands = yield* Ref.get(fixture.dispatchedCommands);
+          expect(commands).toHaveLength(2);
+
+          const createCmd = commands[0]!;
+          expect(createCmd.type).toBe("thread.create");
+          if (createCmd.type === "thread.create") {
+            expect(createCmd.title).toBe("[Security Reviewer] Security Audit");
+          }
+
+          const turnCmd = commands[1]!;
+          expect(turnCmd.type).toBe("thread.turn.start");
+          if (turnCmd.type === "thread.turn.start") {
+            expect(turnCmd.message.text).toContain(
+              '<agent_job id="security-reviewer" name="Security Reviewer">',
+            );
+            expect(turnCmd.message.text).toContain("Audit codebase for security holes");
+          }
+        }),
+      ),
+  );
+
+  it.effect(
+    "executes thread action with a custom project job, using default promptTemplate, modelSelection and runtimeMode",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const jobModelSelection = {
+            instanceId: ProviderInstanceId.make("anthropic"),
+            model: "claude-3-5-sonnet",
+          };
+
+          const fixture = yield* makeHarness({
+            projectFile: {
+              jobs: [
+                {
+                  id: "pentest-job",
+                  name: "Lead Pentester",
+                  description: "Probes vulnerabilities",
+                  rolePrompt: "You are a lead penetration tester.",
+                  promptTemplate: "Run pentest suite on ${project.title}",
+                  modelSelection: jobModelSelection,
+                  runtimeMode: "approval-required",
+                },
+              ],
+              automations: [
+                {
+                  id: "weekly-pentest",
+                  name: "Weekly Pentest",
+                  trigger: {
+                    type: "cron",
+                    schedule: "30 9 * * *",
+                  },
+                  action: {
+                    type: "thread",
+                    jobId: "pentest-job",
+                    // action.prompt omitted: should use job.promptTemplate
+                  },
+                },
+              ],
+            },
+          });
+
+          const reactor = yield* AutomationReactor.AutomationReactor.pipe(
+            Effect.provide(fixture.reactorLayer),
+          );
+
+          yield* reactor.pollOnce({ now: new Date("2026-09-08T09:30:00.000Z") });
+
+          const commands = yield* Ref.get(fixture.dispatchedCommands);
+          expect(commands).toHaveLength(2);
+
+          const createCmd = commands[0]!;
+          expect(createCmd.type).toBe("thread.create");
+          if (createCmd.type === "thread.create") {
+            expect(createCmd.title).toBe("[Lead Pentester] Weekly Pentest");
+            expect(createCmd.modelSelection).toEqual(jobModelSelection);
+            expect(createCmd.runtimeMode).toBe("approval-required");
+          }
+
+          const turnCmd = commands[1]!;
+          expect(turnCmd.type).toBe("thread.turn.start");
+          if (turnCmd.type === "thread.turn.start") {
+            expect(turnCmd.message.text).toContain(
+              '<agent_job id="pentest-job" name="Lead Pentester">',
+            );
+            expect(turnCmd.message.text).toContain("You are a lead penetration tester.");
+            expect(turnCmd.message.text).toContain("Run pentest suite on My Project");
+          }
+        }),
+      ),
+  );
 });

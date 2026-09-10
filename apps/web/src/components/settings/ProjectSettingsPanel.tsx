@@ -49,6 +49,7 @@ import {
 import { useT3ProjectFileState } from "../../hooks/useT3ProjectFileScripts";
 import { ProjectActionsList } from "./ProjectActionsList";
 import { ProjectAutomationsSection } from "./ProjectAutomationsSection";
+import { ProjectJobsSection } from "./ProjectJobsSection";
 import { isElectron } from "../../env";
 import {
   decodeProjectScriptKeybindingRule,
@@ -1437,6 +1438,12 @@ function ProjectDetail({
                 search: { environmentId: representative.environmentId, instanceId },
               });
             }}
+          />
+          <ProjectJobsSection
+            environmentId={selectedCheckout.environmentId}
+            workspaceRoot={selectedCheckout.workspaceRoot}
+            t3File={t3File}
+            disabled={isSavingScripts}
           />
         </SettingsSection>
 

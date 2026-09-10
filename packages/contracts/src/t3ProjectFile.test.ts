@@ -9,18 +9,29 @@ import {
   AutomationTrigger,
   T3ProjectFile,
   T3ProjectFileAutomation,
+  T3ProjectFileJob,
 } from "./t3ProjectFile.ts";
 
 const decode = Schema.decodeUnknownSync(T3ProjectFile);
 const decodeAutomation = Schema.decodeUnknownSync(T3ProjectFileAutomation);
 const decodeTrigger = Schema.decodeUnknownSync(AutomationTrigger);
 const decodeAction = Schema.decodeUnknownSync(AutomationAction);
+const decodeJob = Schema.decodeUnknownSync(T3ProjectFileJob);
 
 describe("T3ProjectFile", () => {
-  it("decodes a full project file with scripts and automations", () => {
+  it("decodes a full project file with scripts, jobs, and automations", () => {
     const decoded = decode({
       $schema: "https://t3.codes/schema/t3.json",
       iconPath: "assets/logo.svg",
+      jobs: [
+        {
+          id: "pentester",
+          name: "Pentester",
+          description: "Performs penetration testing",
+          rolePrompt: "Think like an attacker",
+          promptTemplate: "Analyze attack surface for PR #${pr.number}",
+        },
+      ],
       scripts: [
         {
           name: "Dev",
@@ -47,57 +58,39 @@ describe("T3ProjectFile", () => {
           },
         },
         {
-          id: "pr-reviewer",
-          name: "PR Reviewer",
+          id: "pr-review",
+          name: "PR Review",
           trigger: {
             type: "github_pr",
-            events: ["opened", "synchronize"],
-            targetBranches: ["main"],
+            events: ["opened"],
           },
           action: {
             type: "thread",
-            prompt: "Review PR #${pr.number}: ${pr.title}",
-          },
-        },
-        {
-          id: "issue-triage",
-          name: "Issue Triage",
-          trigger: {
-            type: "github_issue",
-            events: ["opened", "labeled"],
-            labels: ["triage"],
-          },
-          action: {
-            type: "thread",
-            prompt: "Triage issue #${issue.number}: ${issue.title}",
-            title: "Triage Issue #${issue.number}",
+            jobId: "pr-reviewer",
+            prompt: "Please review PR #${pr.number}",
+            modelSelection: {
+              instanceId: "anthropic",
+              model: "claude-3-5-sonnet",
+            },
           },
         },
       ],
     });
 
     expect(decoded.iconPath).toBe("assets/logo.svg");
+    expect(decoded.jobs).toHaveLength(1);
+    expect(decoded.jobs?.[0]?.name).toBe("Pentester");
     expect(decoded.scripts).toHaveLength(2);
-    expect(decoded.scripts?.[1]).toEqual({ name: "Test", command: "pnpm test" });
-    expect(decoded.automations).toHaveLength(3);
-    expect(decoded.automations?.[0]?.id).toBe("nightly-tests");
-    expect(decoded.automations?.[0]?.trigger).toEqual({
-      type: "cron",
-      schedule: "0 0 * * *",
-    });
-    expect(decoded.automations?.[0]?.action).toEqual({
-      type: "script",
-      command: "pnpm test",
-    });
-    expect(decoded.automations?.[1]?.trigger).toEqual({
-      type: "github_pr",
-      events: ["opened", "synchronize"],
-      targetBranches: ["main"],
-    });
-    expect(decoded.automations?.[2]?.trigger).toEqual({
-      type: "github_issue",
-      events: ["opened", "labeled"],
-      labels: ["triage"],
+    expect(decoded.automations).toHaveLength(2);
+    const prAction = decoded.automations?.[1]?.action;
+    expect(prAction).toEqual({
+      type: "thread",
+      jobId: "pr-reviewer",
+      prompt: "Please review PR #${pr.number}",
+      modelSelection: {
+        instanceId: "anthropic",
+        model: "claude-3-5-sonnet",
+      },
     });
   });
 
@@ -106,12 +99,17 @@ describe("T3ProjectFile", () => {
     expect(decode({ futureField: true })).toEqual({});
   });
 
-  it("trims icon paths and script fields", () => {
-    const decoded = decode({
-      iconPath: " assets/logo.svg ",
-      scripts: [{ name: " Dev ", command: " pnpm dev " }],
-    });
+  it("decodes defaultThreadEnvMode and rejects unknown modes", () => {
+    expect(decode({ defaultThreadEnvMode: "worktree" }).defaultThreadEnvMode).toBe("worktree");
+    expect(decode({ defaultThreadEnvMode: "local" }).defaultThreadEnvMode).toBe("local");
+    expect(() => decode({ defaultThreadEnvMode: "remote" })).toThrow();
+  });
 
+  it("trims whitespace from string fields", () => {
+    const decoded = decode({
+      iconPath: "  assets/logo.svg  ",
+      scripts: [{ name: "  Dev  ", command: "  pnpm dev  " }],
+    });
     expect(decoded.iconPath).toBe("assets/logo.svg");
     expect(decoded.scripts?.[0]).toEqual({ name: "Dev", command: "pnpm dev" });
   });
@@ -126,25 +124,90 @@ describe("T3ProjectFile", () => {
     ).toThrow();
   });
 
-  it("decodes defaultThreadEnvMode and rejects unknown modes", () => {
-    expect(decode({ defaultThreadEnvMode: "worktree" }).defaultThreadEnvMode).toBe("worktree");
-    expect(decode({ defaultThreadEnvMode: "local" }).defaultThreadEnvMode).toBe("local");
-    expect(() => decode({ defaultThreadEnvMode: "remote" })).toThrow();
+  it("enforces max scripts limit", () => {
+    const scripts = Array.from({ length: 51 }, (_, i) => ({
+      name: `script-${i}`,
+      command: `echo ${i}`,
+    }));
+    expect(() => decode({ scripts })).toThrow();
   });
 
-  describe("automations", () => {
-    it("decodes cron trigger and aliases", () => {
-      const trigger = decodeTrigger({
-        type: "cron",
-        schedule: "*/15 * * * *",
+  it("enforces max automations limit", () => {
+    const automations = Array.from({ length: 51 }, (_, i) => ({
+      id: `auto-${i}`,
+      name: `Auto ${i}`,
+      trigger: { type: "cron" as const, schedule: "* * * * *" },
+      action: { type: "script" as const, command: `echo ${i}` },
+    }));
+    expect(() => decode({ automations })).toThrow();
+  });
+
+  describe("T3ProjectFileJob", () => {
+    it("decodes valid job with required and optional fields", () => {
+      const job = decodeJob({
+        id: "security-reviewer",
+        name: "Security Reviewer",
+        description: "Scans for OWASP issues",
+        rolePrompt: "You are a security auditor",
+        promptTemplate: "Audit PR #${pr.number}",
+        runtimeMode: "approval-required",
       });
-      expect(trigger).toEqual({
-        type: "cron",
-        schedule: "*/15 * * * *",
+
+      expect(job).toEqual({
+        id: "security-reviewer",
+        name: "Security Reviewer",
+        description: "Scans for OWASP issues",
+        rolePrompt: "You are a security auditor",
+        promptTemplate: "Audit PR #${pr.number}",
+        runtimeMode: "approval-required",
       });
     });
 
-    it("decodes github_pr trigger", () => {
+    it("rejects job with empty rolePrompt or name", () => {
+      expect(() =>
+        decodeJob({
+          id: "tester",
+          name: "",
+          rolePrompt: "Valid",
+        }),
+      ).toThrow();
+
+      expect(() =>
+        decodeJob({
+          id: "tester",
+          name: "Tester",
+          rolePrompt: "   ",
+        }),
+      ).toThrow();
+    });
+  });
+
+  describe("Automations Schema", () => {
+    it("decodes cron trigger with schedule", () => {
+      const trigger = decodeTrigger({
+        type: "cron",
+        schedule: "0 9 * * 1-5",
+      });
+      expect(trigger).toEqual({
+        type: "cron",
+        schedule: "0 9 * * 1-5",
+      });
+    });
+
+    it("decodes github_pr trigger with events and branches", () => {
+      const trigger = decodeTrigger({
+        type: "github_pr",
+        events: ["opened", "reopened"],
+        targetBranches: ["main"],
+      });
+      expect(trigger).toEqual({
+        type: "github_pr",
+        events: ["opened", "reopened"],
+        targetBranches: ["main"],
+      });
+    });
+
+    it("decodes github_pr trigger with default events when omitted", () => {
       const trigger = decodeTrigger({
         type: "github_pr",
         events: ["opened", "reopened"],
@@ -186,16 +249,29 @@ describe("T3ProjectFile", () => {
       ).toThrow();
     });
 
-    it("decodes thread action with prompt and title", () => {
+    it("decodes thread action with prompt, jobId and title", () => {
       const action = decodeAction({
         type: "thread",
+        jobId: "pr-reviewer",
         prompt: "Review PR #${pr.number}",
         title: "PR Review #${pr.number}",
       });
       expect(action).toEqual({
         type: "thread",
+        jobId: "pr-reviewer",
         prompt: "Review PR #${pr.number}",
         title: "PR Review #${pr.number}",
+      });
+    });
+
+    it("decodes thread action with jobId without prompt", () => {
+      const action = decodeAction({
+        type: "thread",
+        jobId: "pr-reviewer",
+      });
+      expect(action).toEqual({
+        type: "thread",
+        jobId: "pr-reviewer",
       });
     });
 
