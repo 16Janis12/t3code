@@ -20,9 +20,19 @@ is_true() {
 
 setup_npm_auth() {
   local token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+  local scope=""
+  if [[ "$PACKAGE_NAME" == @*/* ]]; then
+    scope="${PACKAGE_NAME%%/*}"
+  fi
+
+  if [ -n "$scope" ]; then
+    npm config set "${scope}:registry" "$REGISTRY" >/dev/null 2>&1 || true
+  fi
+
   if [ -n "$token" ]; then
-    npm config set @16janis12:registry "$REGISTRY" >/dev/null 2>&1 || true
-    npm config set "//npm.pkg.github.com/:_authToken" "$token" >/dev/null 2>&1 || true
+    local registry_host="${REGISTRY#*://}"
+    registry_host="${registry_host%/}/"
+    npm config set "//${registry_host}:_authToken" "$token" >/dev/null 2>&1 || true
     export GH_TOKEN="$token"
     export GITHUB_TOKEN="$token"
   else
@@ -42,8 +52,8 @@ get_latest_version() {
 
 install_version() {
   local target_ver="${1:-latest}"
-  log "Installing ${PACKAGE_NAME}@${target_ver} from ${REGISTRY}..."
-  if npm install -g "${PACKAGE_NAME}@${target_ver}" --registry="$REGISTRY"; then
+  log "Installing ${PACKAGE_NAME}@${target_ver}..."
+  if npm install -g "${PACKAGE_NAME}@${target_ver}"; then
     local installed
     installed="$(get_installed_version)"
     log "Successfully installed ${PACKAGE_NAME} (version: ${installed})."

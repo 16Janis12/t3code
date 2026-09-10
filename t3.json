@@ -15,19 +15,5 @@
       "runOnWorktreeCreate": true
     }
   ],
-  "automations": [
-    {
-      "id": "analyzer",
-      "name": "Analyzer",
-      "enabled": true,
-      "trigger": {
-        "type": "cron",
-        "schedule": "*/15 * * * *"
-      },
-      "action": {
-        "type": "thread",
-        "prompt": "Analyze recent repository activity and generate a status update."
-      }
-    }
-  ]
+  "automations": []
 }
