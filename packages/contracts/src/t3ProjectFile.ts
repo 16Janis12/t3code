@@ -13,6 +13,7 @@ export const T3_PROJECT_FILE_SCHEMA_URL = "https://t3.codes/schema/t3.json";
 const T3_PROJECT_FILE_PATH_MAX_LENGTH = 512;
 const T3_PROJECT_FILE_MAX_SCRIPTS = 50;
 const T3_PROJECT_FILE_MAX_AUTOMATIONS = 50;
+const T3_PROJECT_FILE_MAX_JOBS = 50;
 
 // Annotations go on the encoded (string) side so they survive into the
 // published JSON Schema; decoding still trims and re-validates non-emptiness.
@@ -59,6 +60,36 @@ export const T3ProjectFileScript = Schema.Struct({
   description: "A project script that team members can import into T3 Code.",
 });
 export type T3ProjectFileScript = typeof T3ProjectFileScript.Type;
+
+export const T3ProjectFileJob = Schema.Struct({
+  id: trimmedNonEmpty({
+    description: "Unique identifier for this job.",
+  }),
+  name: trimmedNonEmpty({
+    description: "Display name for the job.",
+  }),
+  description: Schema.optionalKey(
+    trimmedNonEmpty({
+      description: "Optional description of what this job does.",
+    }),
+  ),
+  rolePrompt: trimmedNonEmpty({
+    description: "System instructions and role guidelines passed to the agent.",
+  }),
+  promptTemplate: Schema.optionalKey(
+    trimmedNonEmpty({
+      description:
+        "Default task prompt template with variable interpolation (e.g. ${pr.number}, ${issue.title}).",
+    }),
+  ),
+  modelSelection: Schema.optionalKey(ModelSelection),
+  runtimeMode: Schema.optionalKey(RuntimeMode),
+  icon: Schema.optionalKey(trimmedNonEmpty({ description: "Optional icon identifier." })),
+}).annotate({
+  description:
+    "A specialized agent job definition with role instructions and default prompt template.",
+});
+export type T3ProjectFileJob = typeof T3ProjectFileJob.Type;
 
 export const AutomationGitHubPrEvent = Schema.Literals([
   "opened",
@@ -135,10 +166,17 @@ export type AutomationTrigger = typeof AutomationTrigger.Type;
 
 export const AutomationThreadAction = Schema.Struct({
   type: Schema.Literal("thread"),
-  prompt: trimmedNonEmpty({
-    description:
-      "Prompt template sent to the agent thread. Supports variables like ${event.type}, ${pr.number}, ${pr.title}, ${issue.number}, ${issue.title}.",
-  }),
+  jobId: Schema.optionalKey(
+    trimmedNonEmpty({
+      description: "Optional ID of a project-defined or built-in agent job.",
+    }),
+  ),
+  prompt: Schema.optionalKey(
+    trimmedNonEmpty({
+      description:
+        "Prompt template sent to the agent thread. Supports variables like ${event.type}, ${pr.number}, ${pr.title}, ${issue.number}, ${issue.title}. If omitted, the job's prompt template is used.",
+    }),
+  ),
   title: Schema.optionalKey(
     trimmedNonEmpty({
       description: "Optional thread title template.",
@@ -147,7 +185,7 @@ export const AutomationThreadAction = Schema.Struct({
   modelSelection: Schema.optionalKey(ModelSelection),
   runtimeMode: Schema.optionalKey(RuntimeMode),
 }).annotate({
-  description: "Action that starts a new agent thread with an initial prompt.",
+  description: "Action that starts a new agent thread with an initial prompt or job.",
 });
 export type AutomationThreadAction = typeof AutomationThreadAction.Type;
 
@@ -215,6 +253,13 @@ export const T3ProjectFile = Schema.Struct({
       description:
         'Where new threads start for this repository: "worktree" for a fresh git worktree, "local" for the current checkout. A per-project setting in T3 Code overrides this; when neither is set, the global default applies.',
     }),
+  ),
+  jobs: Schema.optionalKey(
+    Schema.Array(T3ProjectFileJob)
+      .annotate({
+        description: "Custom agent jobs defined for this repository.",
+      })
+      .check(Schema.isMaxLength(T3_PROJECT_FILE_MAX_JOBS)),
   ),
   scripts: Schema.optionalKey(
     Schema.Array(T3ProjectFileScript)

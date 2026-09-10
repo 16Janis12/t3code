@@ -36,11 +36,25 @@ describe("buildT3ProjectFileJsonSchema", () => {
       "automations",
       "defaultThreadEnvMode",
       "iconPath",
+      "jobs",
       "scripts",
     ]);
     expect(schema.required).toBeUndefined();
     expect(schema.properties.iconPath?.description).toContain("Workspace-relative path");
     expect(schema.properties.defaultThreadEnvMode?.description).toContain("new threads start");
+
+    const job = schema.properties.jobs?.items;
+    expect(job?.required).toEqual(["id", "name", "rolePrompt"]);
+    expect(Object.keys(job?.properties ?? {}).sort()).toEqual([
+      "description",
+      "icon",
+      "id",
+      "modelSelection",
+      "name",
+      "promptTemplate",
+      "rolePrompt",
+      "runtimeMode",
+    ]);
 
     const script = schema.properties.scripts?.items;
     expect(script?.required).toEqual(["name", "command"]);
@@ -62,13 +76,9 @@ describe("buildT3ProjectFileJsonSchema", () => {
 
 describe("T3ProjectFileFromJson", () => {
   it("decodes lenient JSONC with comments and trailing commas", () => {
-    const decoded = decodeJson(`{
-      // team scripts
-      "iconPath": "assets/logo.svg",
-      "scripts": [
-        { "name": "Dev", "command": "pnpm dev", },
-      ],
-    }`);
+    const decoded = decodeJson(
+      `{\n      // team scripts\n      "iconPath": "assets/logo.svg",\n      "scripts": [\n        { "name": "Dev", "command": "pnpm dev", },\n      ],\n    }`,
+    );
 
     expect(decoded.iconPath).toBe("assets/logo.svg");
     expect(decoded.scripts?.[0]).toEqual({ name: "Dev", command: "pnpm dev" });

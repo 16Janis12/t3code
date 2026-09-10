@@ -146,4 +146,33 @@ describe("ProjectAutomationEditorDialog", () => {
     expect(markup).toContain("Custom model configured for this automation.");
     expect(markup).toContain("Reset to project default");
   });
+  it("renders job selection with built-in and project jobs", () => {
+    const markup = renderToStaticMarkup(
+      <ProjectAutomationEditorDialog
+        open={true}
+        onOpenChange={() => {}}
+        automation={null}
+        existingIds={[]}
+        onSave={() => {}}
+        projectJobs={[
+          {
+            id: "custom-tester",
+            name: "Custom Tester",
+            rolePrompt: "You test things.",
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("Agent Job / Role (optional)");
+    expect(markup).toContain("Generic Agent (No specialized job)");
+    expect(markup).toContain("Built-in Jobs");
+    expect(markup).toContain("PR Reviewer");
+    expect(markup).toContain("Pentester");
+    expect(markup).toContain("Security Reviewer");
+    expect(markup).toContain("Feature Refiner");
+    expect(markup).toContain("Bug Triager");
+    expect(markup).toContain("Project Jobs");
+    expect(markup).toContain("Custom Tester");
+  });
 });

@@ -1,4 +1,6 @@
 import {
+  BUILTIN_JOBS,
+  resolveJob,
   type AutomationAction,
   type AutomationGitHubIssueEvent,
   type AutomationGitHubPrEvent,
@@ -7,6 +9,7 @@ import {
   type ProviderDriverKind,
   type ProviderInstanceId,
   type T3ProjectFileAutomation,
+  type T3ProjectFileJob,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import { BotIcon, ClockIcon, GitPullRequestIcon, CircleDotIcon, TerminalIcon } from "lucide-react";
@@ -75,6 +78,7 @@ export interface ProjectAutomationEditorDialogProps {
   readonly modelOptionsByInstance?: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
   readonly defaultModelSelection?: ModelSelection | null;
   readonly onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
+  readonly projectJobs?: ReadonlyArray<T3ProjectFileJob>;
 }
 
 export function ProjectAutomationEditorDialog({
@@ -87,6 +91,7 @@ export function ProjectAutomationEditorDialog({
   modelOptionsByInstance,
   defaultModelSelection,
   onOpenProviderSetup,
+  projectJobs,
 }: ProjectAutomationEditorDialogProps) {
   const isEditing = automation !== null;
 
@@ -124,6 +129,9 @@ export function ProjectAutomationEditorDialog({
 
   const [actionType, setActionType] = useState<"thread" | "script">(() =>
     automation ? automation.action.type : "thread",
+  );
+  const [jobId, setJobId] = useState<string>(() =>
+    automation?.action.type === "thread" ? (automation.action.jobId ?? "") : "",
   );
   const [threadTitle, setThreadTitle] = useState(() =>
     automation?.action.type === "thread" ? (automation.action.title ?? "") : "",
@@ -214,6 +222,7 @@ export function ProjectAutomationEditorDialog({
 
       if (automation.action.type === "thread") {
         setActionType("thread");
+        setJobId(automation.action.jobId ?? "");
         setThreadTitle(automation.action.title ?? "");
         setThreadPrompt(automation.action.prompt);
         setSelectedModelSelection(automation.action.modelSelection ?? null);
@@ -234,6 +243,7 @@ export function ProjectAutomationEditorDialog({
       setIssueEvents(["opened"]);
       setIssueLabels("");
       setActionType("thread");
+      setJobId("");
       setThreadTitle("");
       setThreadPrompt("Analyze recent repository activity and generate a status update.");
       setSelectedModelSelection(null);
@@ -249,6 +259,17 @@ export function ProjectAutomationEditorDialog({
     }
   };
 
+  const activeJob = useMemo(() => {
+    return resolveJob(jobId, projectJobs);
+  }, [jobId, projectJobs]);
+
+  const handleJobChange = (newJobId: string) => {
+    setJobId(newJobId);
+    const resolved = resolveJob(newJobId, projectJobs);
+    if (resolved?.promptTemplate) {
+      setThreadPrompt(resolved.promptTemplate);
+    }
+  };
   const handleInsertVariable = (variable: string) => {
     setThreadPrompt((prev) => `${prev} \${${variable}}`);
   };
@@ -321,6 +342,7 @@ export function ProjectAutomationEditorDialog({
       action = {
         type: "thread",
         prompt,
+        ...(jobId ? { jobId } : {}),
         ...(title ? { title } : {}),
         ...(selectedModelSelection ? { modelSelection: selectedModelSelection } : {}),
       };
@@ -605,6 +627,53 @@ export function ProjectAutomationEditorDialog({
 
               {actionType === "thread" && (
                 <div className="space-y-3 rounded-lg border border-border/60 p-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="thread-job" className="text-xs">
+                      Agent Job / Role (optional)
+                    </Label>
+                    <select
+                      id="thread-job"
+                      value={jobId}
+                      onChange={(e) => handleJobChange(e.target.value)}
+                      className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground shadow-xs focus:outline-hidden focus:ring-1 focus:ring-ring"
+                    >
+                      <option value="">Generic Agent (No specialized job)</option>
+                      <optgroup label="Built-in Jobs">
+                        {BUILTIN_JOBS.map((j) => (
+                          <option key={j.id} value={j.id}>
+                            {j.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                      {projectJobs && projectJobs.length > 0 ? (
+                        <optgroup label="Project Jobs">
+                          {projectJobs.map((j) => (
+                            <option key={j.id} value={j.id}>
+                              {j.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                    </select>
+                    {activeJob ? (
+                      <div className="rounded-md border border-border/60 bg-muted/30 p-2.5 text-xs text-muted-foreground">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-foreground">{activeJob.name}</span>
+                          {activeJob.promptTemplate ? (
+                            <button
+                              type="button"
+                              className="text-[11px] text-primary hover:underline"
+                              onClick={() => setThreadPrompt(activeJob.promptTemplate ?? "")}
+                            >
+                              Reset to job prompt
+                            </button>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 text-[11px] leading-relaxed">{activeJob.description}</p>
+                      </div>
+                    ) : null}
+                  </div>
+
                   <div className="space-y-1">
                     <Label htmlFor="thread-title" className="text-xs">
                       Thread Title Template (optional)

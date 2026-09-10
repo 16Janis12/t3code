@@ -1,4 +1,5 @@
 import {
+  resolveJob,
   T3_PROJECT_FILE_NAME,
   type EnvironmentId,
   type ModelSelection,
@@ -235,6 +236,12 @@ export function ProjectAutomationsSection({
                   <span className="shrink-0 rounded-sm border border-border/60 bg-muted/40 px-1.5 py-px font-mono text-[11px] font-normal text-muted-foreground">
                     {triggerSummary}
                   </span>
+                  {automation.action.type === "thread" && automation.action.jobId ? (
+                    <span className="shrink-0 rounded-sm border border-indigo-500/30 bg-indigo-500/10 px-1.5 py-px text-[11px] font-medium text-indigo-400">
+                      {resolveJob(automation.action.jobId, t3File.jobs)?.name ??
+                        automation.action.jobId}
+                    </span>
+                  ) : null}
                   {automation.action.type === "thread" && automation.action.modelSelection ? (
                     <span className="shrink-0 rounded-sm border border-border/60 bg-muted/40 px-1.5 py-px font-mono text-[11px] font-normal text-muted-foreground">
                       {automation.action.modelSelection.instanceId}:{" "}
@@ -294,6 +301,7 @@ export function ProjectAutomationsSection({
         modelOptionsByInstance={modelOptionsByInstance}
         defaultModelSelection={defaultModelSelection}
         onOpenProviderSetup={onOpenProviderSetup}
+        projectJobs={t3File.jobs}
       />
     </>
   );
