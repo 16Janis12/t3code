@@ -1,4 +1,9 @@
-import type { T3ProjectFileAutomation } from "@t3tools/contracts";
+import {
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type ServerProvider,
+  type T3ProjectFileAutomation,
+} from "@t3tools/contracts";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -21,7 +26,25 @@ vi.mock("~/state/use-atom-command", () => ({
   useAtomCommand: () => vi.fn(),
 }));
 
+import { deriveProviderInstanceEntries } from "../../providerInstances";
 import { ProjectAutomationsSection } from "./ProjectAutomationsSection";
+
+function createMockEntry(instanceId: string, driver: string) {
+  const provider: ServerProvider = {
+    instanceId: ProviderInstanceId.make(instanceId),
+    driver: ProviderDriverKind.make(driver),
+    enabled: true,
+    installed: true,
+    version: null,
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: "2026-08-28T00:00:00.000Z",
+    models: [{ id: "test-model", name: "Test Model" }],
+    slashCommands: [],
+    skills: [],
+  };
+  return deriveProviderInstanceEntries([provider])[0]!;
+}
 
 describe("ProjectAutomationsSection", () => {
   it("renders empty state when there are no automations", () => {
@@ -89,6 +112,10 @@ describe("ProjectAutomationsSection", () => {
           type: "thread",
           title: "Review PR #${pr.number}",
           prompt: "Please review PR #${pr.number}: ${pr.title}",
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5",
+          },
         },
       },
       {
@@ -111,6 +138,7 @@ describe("ProjectAutomationsSection", () => {
       <ProjectAutomationsSection
         environmentId={"env-local" as any}
         workspaceRoot="/workspace"
+        instanceEntries={[createMockEntry("codex", "codex")]}
         t3File={{
           status: "valid",
           file: { automations: sampleAutomations },
@@ -128,6 +156,7 @@ describe("ProjectAutomationsSection", () => {
     expect(markup).toContain("Auto PR Reviewer");
     expect(markup).toContain("pr: opened, synchronize");
     expect(markup).toContain("Thread: Review PR #${pr.number}");
+    expect(markup).toContain("codex: gpt-5");
 
     expect(markup).toContain("Issue Triage");
     expect(markup).toContain("issue: opened, labeled");

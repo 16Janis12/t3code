@@ -1243,11 +1243,7 @@ function ProjectDetail({
             title="Project MCP servers"
             description="Allow agents to discover and connect to external MCP servers defined in .mcp.json."
             control={
-              <Button
-                render={<Link to="/settings/integrations" />}
-                size="sm"
-                variant="outline"
-              >
+              <Button render={<Link to="/settings/integrations" />} size="sm" variant="outline">
                 MCP settings
               </Button>
             }
@@ -1432,6 +1428,15 @@ function ProjectDetail({
             workspaceRoot={selectedCheckout.workspaceRoot}
             t3File={t3File}
             disabled={isSavingScripts}
+            instanceEntries={instanceEntries}
+            modelOptionsByInstance={modelOptionsByInstance}
+            defaultModelSelection={resolvedSelection}
+            onOpenProviderSetup={(instanceId) => {
+              void navigate({
+                to: "/settings/providers",
+                search: { environmentId: representative.environmentId, instanceId },
+              });
+            }}
           />
         </SettingsSection>
 

@@ -3,11 +3,18 @@ import {
   type AutomationGitHubIssueEvent,
   type AutomationGitHubPrEvent,
   type AutomationTrigger,
+  type ModelSelection,
+  type ProviderDriverKind,
+  type ProviderInstanceId,
   type T3ProjectFileAutomation,
 } from "@t3tools/contracts";
+import { createModelSelection } from "@t3tools/shared/model";
 import { BotIcon, ClockIcon, GitPullRequestIcon, CircleDotIcon, TerminalIcon } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
+import { ProviderModelPicker } from "~/components/chat/ProviderModelPicker";
+import { TraitsPicker } from "~/components/chat/TraitsPicker";
+import type { ModelEsque } from "~/components/chat/providerIconUtils";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import {
@@ -24,6 +31,7 @@ import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { Switch } from "~/components/ui/switch";
 import { Textarea } from "~/components/ui/textarea";
+import type { ProviderInstanceEntry } from "~/providerInstances";
 
 const PR_EVENTS: Array<{ id: AutomationGitHubPrEvent; label: string }> = [
   { id: "opened", label: "Opened" },
@@ -63,6 +71,10 @@ export interface ProjectAutomationEditorDialogProps {
   readonly automation: T3ProjectFileAutomation | null;
   readonly existingIds: ReadonlyArray<string>;
   readonly onSave: (automation: T3ProjectFileAutomation) => void;
+  readonly instanceEntries?: ReadonlyArray<ProviderInstanceEntry>;
+  readonly modelOptionsByInstance?: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
+  readonly defaultModelSelection?: ModelSelection | null;
+  readonly onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
 }
 
 export function ProjectAutomationEditorDialog({
@@ -71,26 +83,110 @@ export function ProjectAutomationEditorDialog({
   automation,
   existingIds,
   onSave,
+  instanceEntries,
+  modelOptionsByInstance,
+  defaultModelSelection,
+  onOpenProviderSetup,
 }: ProjectAutomationEditorDialogProps) {
   const isEditing = automation !== null;
 
-  const [name, setName] = useState("");
-  const [id, setId] = useState("");
-  const [idManuallyEdited, setIdManuallyEdited] = useState(false);
-  const [enabled, setEnabled] = useState(true);
+  const [name, setName] = useState(() => (automation ? automation.name : ""));
+  const [id, setId] = useState(() => (automation ? automation.id : ""));
+  const [idManuallyEdited, setIdManuallyEdited] = useState(() => Boolean(automation));
+  const [enabled, setEnabled] = useState(() => (automation ? (automation.enabled ?? true) : true));
 
-  const [triggerType, setTriggerType] = useState<"cron" | "github_pr" | "github_issue">("cron");
-  const [cronSchedule, setCronSchedule] = useState("0 9 * * 1-5");
-  const [prEvents, setPrEvents] = useState<AutomationGitHubPrEvent[]>(["opened", "synchronize"]);
-  const [prBranches, setPrBranches] = useState("");
-  const [issueEvents, setIssueEvents] = useState<AutomationGitHubIssueEvent[]>(["opened"]);
-  const [issueLabels, setIssueLabels] = useState("");
+  const [triggerType, setTriggerType] = useState<"cron" | "github_pr" | "github_issue">(() =>
+    automation ? automation.trigger.type : "cron",
+  );
+  const [cronSchedule, setCronSchedule] = useState(() =>
+    automation?.trigger.type === "cron" ? automation.trigger.schedule : "0 9 * * 1-5",
+  );
+  const [prEvents, setPrEvents] = useState<AutomationGitHubPrEvent[]>(() =>
+    automation?.trigger.type === "github_pr" && automation.trigger.events
+      ? [...automation.trigger.events]
+      : ["opened", "synchronize"],
+  );
+  const [prBranches, setPrBranches] = useState(() =>
+    automation?.trigger.type === "github_pr"
+      ? (automation.trigger.targetBranches?.join(", ") ?? "")
+      : "",
+  );
+  const [issueEvents, setIssueEvents] = useState<AutomationGitHubIssueEvent[]>(() =>
+    automation?.trigger.type === "github_issue" && automation.trigger.events
+      ? [...automation.trigger.events]
+      : ["opened"],
+  );
+  const [issueLabels, setIssueLabels] = useState(() =>
+    automation?.trigger.type === "github_issue"
+      ? (automation.trigger.labels?.join(", ") ?? "")
+      : "",
+  );
 
-  const [actionType, setActionType] = useState<"thread" | "script">("thread");
-  const [threadTitle, setThreadTitle] = useState("");
-  const [threadPrompt, setThreadPrompt] = useState("");
-  const [scriptCommand, setScriptCommand] = useState("");
+  const [actionType, setActionType] = useState<"thread" | "script">(() =>
+    automation ? automation.action.type : "thread",
+  );
+  const [threadTitle, setThreadTitle] = useState(() =>
+    automation?.action.type === "thread" ? (automation.action.title ?? "") : "",
+  );
+  const [threadPrompt, setThreadPrompt] = useState(() =>
+    automation?.action.type === "thread"
+      ? automation.action.prompt
+      : "Analyze recent repository activity and generate a status update.",
+  );
+  const [selectedModelSelection, setSelectedModelSelection] = useState<ModelSelection | null>(() =>
+    automation?.action.type === "thread" ? (automation.action.modelSelection ?? null) : null,
+  );
+  const [scriptCommand, setScriptCommand] = useState(() =>
+    automation?.action.type === "script" ? (automation.action.command ?? "") : "npm test",
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const effectiveSelection = useMemo(() => {
+    if (selectedModelSelection) {
+      return selectedModelSelection;
+    }
+    if (defaultModelSelection) {
+      return defaultModelSelection;
+    }
+    const firstEntry = instanceEntries?.[0];
+    if (firstEntry && firstEntry.models.length > 0) {
+      return {
+        instanceId: firstEntry.instanceId,
+        model: firstEntry.models[0].id,
+      };
+    }
+    return null;
+  }, [selectedModelSelection, defaultModelSelection, instanceEntries]);
+
+  const activeEntry = useMemo(() => {
+    if (!instanceEntries || instanceEntries.length === 0) return null;
+    if (effectiveSelection) {
+      const match = instanceEntries.find(
+        (entry) => entry.instanceId === effectiveSelection.instanceId,
+      );
+      if (match) return match;
+    }
+    return instanceEntries[0] ?? null;
+  }, [effectiveSelection, instanceEntries]);
+
+  const activeSelection = useMemo(() => {
+    if (!activeEntry) return null;
+    if (effectiveSelection && effectiveSelection.instanceId === activeEntry.instanceId) {
+      return effectiveSelection;
+    }
+    const defaultModel = activeEntry.models[0]?.id ?? "";
+    return {
+      instanceId: activeEntry.instanceId,
+      model: defaultModel,
+    };
+  }, [activeEntry, effectiveSelection]);
+
+  const resolvedModelOptionsByInstance = useMemo(
+    () => modelOptionsByInstance ?? new Map(),
+    [modelOptionsByInstance],
+  );
+
+  const hasProviders = Boolean(instanceEntries && instanceEntries.length > 0);
 
   useEffect(() => {
     if (!open) return;
@@ -120,9 +216,11 @@ export function ProjectAutomationEditorDialog({
         setActionType("thread");
         setThreadTitle(automation.action.title ?? "");
         setThreadPrompt(automation.action.prompt);
+        setSelectedModelSelection(automation.action.modelSelection ?? null);
       } else {
         setActionType("script");
         setScriptCommand(automation.action.command ?? "");
+        setSelectedModelSelection(null);
       }
     } else {
       setName("");
@@ -138,6 +236,7 @@ export function ProjectAutomationEditorDialog({
       setActionType("thread");
       setThreadTitle("");
       setThreadPrompt("Analyze recent repository activity and generate a status update.");
+      setSelectedModelSelection(null);
       setScriptCommand("npm test");
     }
     setErrorMessage(null);
@@ -223,6 +322,7 @@ export function ProjectAutomationEditorDialog({
         type: "thread",
         prompt,
         ...(title ? { title } : {}),
+        ...(selectedModelSelection ? { modelSelection: selectedModelSelection } : {}),
       };
     } else {
       const command = scriptCommand.trim();
@@ -261,46 +361,54 @@ export function ProjectAutomationEditorDialog({
 
         <DialogPanel>
           <form id="automation-editor-form" onSubmit={handleSubmit} className="space-y-4">
-            {errorMessage ? (
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+            {errorMessage && (
+              <div className="rounded-md border border-destructive/50 bg-destructive/10 p-2.5 text-xs text-destructive">
                 {errorMessage}
               </div>
-            ) : null}
+            )}
 
             {/* General Info */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="automation-name">Name</Label>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label htmlFor="automation-name" className="text-xs">
+                  Name
+                </Label>
                 <Input
                   id="automation-name"
-                  placeholder="e.g. PR Code Review"
+                  placeholder="e.g. Daily CI, PR Reviewer"
                   value={name}
                   onChange={(e) => handleNameChange(e.target.value)}
-                  autoFocus
+                  className="text-xs"
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="automation-id">ID (slug)</Label>
+
+              <div className="space-y-1">
+                <Label htmlFor="automation-id" className="text-xs">
+                  ID (slug)
+                </Label>
                 <Input
                   id="automation-id"
-                  placeholder="pr-code-review"
+                  placeholder="e.g. daily-ci, pr-reviewer"
                   value={id}
                   onChange={(e) => {
                     setId(e.target.value);
                     setIdManuallyEdited(true);
                   }}
+                  className="font-mono text-xs"
                 />
               </div>
-            </div>
 
-            <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-              <div className="space-y-0.5">
-                <span className="text-sm font-medium">Enable Automation</span>
-                <p className="text-xs text-muted-foreground">
-                  When enabled, this automation actively listens for events.
-                </p>
+              <div className="flex items-center justify-between rounded-lg border border-border/60 p-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="automation-enabled" className="text-xs">
+                    Enable Automation
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Inactive automations remain in t3.json but will not trigger.
+                  </p>
+                </div>
+                <Switch id="automation-enabled" checked={enabled} onCheckedChange={setEnabled} />
               </div>
-              <Switch checked={enabled} onCheckedChange={setEnabled} />
             </div>
 
             {/* Trigger Selection */}
@@ -349,22 +457,24 @@ export function ProjectAutomationEditorDialog({
 
               {triggerType === "cron" && (
                 <div className="space-y-2 rounded-lg border border-border/60 p-3">
-                  <Label htmlFor="cron-schedule" className="text-xs">
-                    Cron Expression
-                  </Label>
-                  <Input
-                    id="cron-schedule"
-                    placeholder="0 9 * * 1-5"
-                    value={cronSchedule}
-                    onChange={(e) => setCronSchedule(e.target.value)}
-                    className="font-mono text-xs"
-                  />
-                  <div className="flex flex-wrap gap-1 pt-1">
+                  <div className="space-y-1">
+                    <Label htmlFor="cron-schedule" className="text-xs">
+                      Schedule Expression (Cron)
+                    </Label>
+                    <Input
+                      id="cron-schedule"
+                      placeholder="0 9 * * 1-5"
+                      value={cronSchedule}
+                      onChange={(e) => setCronSchedule(e.target.value)}
+                      className="font-mono text-xs"
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 pt-1">
                     {CRON_PRESETS.map((preset) => (
                       <button
                         key={preset.value}
                         type="button"
-                        className="rounded border border-border/60 bg-muted/50 px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
+                        className="rounded border border-border/60 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
                         onClick={() => setCronSchedule(preset.value)}
                       >
                         {preset.label}
@@ -404,7 +514,7 @@ export function ProjectAutomationEditorDialog({
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="pr-branches" className="text-xs">
-                      Target Branches (optional)
+                      Target Branches Filter (optional)
                     </Label>
                     <Input
                       id="pr-branches"
@@ -519,6 +629,68 @@ export function ProjectAutomationEditorDialog({
                       onChange={(e) => setThreadPrompt(e.target.value)}
                       className="text-xs font-mono"
                     />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Model & Provider</Label>
+                      {selectedModelSelection ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="xs"
+                          className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                          onClick={() => setSelectedModelSelection(null)}
+                        >
+                          Reset to project default
+                        </Button>
+                      ) : null}
+                    </div>
+                    {hasProviders && activeSelection && activeEntry ? (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <ProviderModelPicker
+                          activeInstanceId={activeSelection.instanceId}
+                          model={activeSelection.model}
+                          lockedProvider={null}
+                          instanceEntries={instanceEntries}
+                          modelOptionsByInstance={resolvedModelOptionsByInstance}
+                          triggerVariant="outline"
+                          triggerClassName="h-8 text-xs font-normal"
+                          onOpenProviderSetup={onOpenProviderSetup}
+                          onInstanceModelChange={(instanceId, model) => {
+                            setSelectedModelSelection(createModelSelection(instanceId, model));
+                          }}
+                        />
+                        <TraitsPicker
+                          provider={activeEntry.driverKind as ProviderDriverKind}
+                          instanceId={activeEntry.instanceId}
+                          models={activeEntry.models}
+                          model={activeSelection.model}
+                          prompt=""
+                          onPromptChange={() => {}}
+                          options={activeSelection.options}
+                          onChange={(options) =>
+                            setSelectedModelSelection(
+                              createModelSelection(
+                                activeSelection.instanceId,
+                                activeSelection.model,
+                                options,
+                              ),
+                            )
+                          }
+                        />
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        {instanceEntries && instanceEntries.length === 0
+                          ? "No providers available."
+                          : "Project default model will be used."}
+                      </p>
+                    )}
+                    <p className="text-[11px] text-muted-foreground">
+                      {selectedModelSelection
+                        ? "Custom model configured for this automation."
+                        : "Inherits the project default model unless customized."}
+                    </p>
                   </div>
                   <div className="space-y-1">
                     <span className="text-[11px] text-muted-foreground">Available Variables:</span>
