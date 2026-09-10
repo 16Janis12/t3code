@@ -272,7 +272,7 @@ describe("AutomationReactor", () => {
                   type: "thread",
                   prompt: "Run custom",
                   modelSelection: actionModelSelection,
-                  runtimeMode: "read-only",
+                  runtimeMode: "approval-required",
                 },
               },
             ],
@@ -292,7 +292,7 @@ describe("AutomationReactor", () => {
         expect(createCmd.type).toBe("thread.create");
         if (createCmd.type === "thread.create") {
           expect(createCmd.modelSelection).toEqual(actionModelSelection);
-          expect(createCmd.runtimeMode).toBe("read-only");
+          expect(createCmd.runtimeMode).toBe("approval-required");
           expect(createCmd.interactionMode).toBe(DEFAULT_PROVIDER_INTERACTION_MODE);
         }
       }),
