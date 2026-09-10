@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDateInEffect:off preferSchemaOverJson:off globalErrorInEffectCatch:off globalErrorInEffectFailure:off
 /**
  * AutomationReactor - Background reactor that triggers automations defined in `t3.json`.
  *

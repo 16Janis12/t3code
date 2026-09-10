@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDateInEffect:off preferSchemaOverJson:off
 import {
   CommandId,
   DEFAULT_MODEL,

@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off
 /**
  * AutomationCron - Pure utilities for parsing and evaluating cron schedules.
  *

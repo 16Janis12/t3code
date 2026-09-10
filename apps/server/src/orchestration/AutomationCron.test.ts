@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off
 import { describe, expect, it } from "vite-plus/test";
 
 import { isValidCron, matchesCron, resolveCronExpression } from "./AutomationCron.ts";
