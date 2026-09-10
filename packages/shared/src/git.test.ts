@@ -8,6 +8,7 @@ import {
   normalizeGitRemoteUrl,
   parseGitHubRepositoryNameWithOwnerFromRemoteUrl,
   parseOriginUrlFromGitConfig,
+  parseRepositoryNameWithOwnerFromRemoteUrl,
   WORKTREE_BRANCH_PREFIX,
 } from "./git.ts";
 
@@ -129,6 +130,20 @@ describe("parseGitHubRepositoryNameWithOwnerFromRemoteUrl", () => {
     expect(
       parseGitHubRepositoryNameWithOwnerFromRemoteUrl("ssh://github.com/T3Tools/T3Code.git"),
     ).toBe("T3Tools/T3Code");
+  });
+});
+
+describe("parseRepositoryNameWithOwnerFromRemoteUrl", () => {
+  it("extracts the owner and repository from various git remote shapes", () => {
+    expect(parseRepositoryNameWithOwnerFromRemoteUrl("git@github.com:16Janis12/t3code.git")).toBe(
+      "16Janis12/t3code",
+    );
+    expect(parseRepositoryNameWithOwnerFromRemoteUrl("https://github.com/16Janis12/t3code")).toBe(
+      "16Janis12/t3code",
+    );
+    expect(parseRepositoryNameWithOwnerFromRemoteUrl("https://ghe.internal.net/org/repo.git")).toBe(
+      "org/repo",
+    );
   });
 });
 

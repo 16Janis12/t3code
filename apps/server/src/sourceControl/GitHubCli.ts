@@ -268,12 +268,14 @@ export class GitHubCli extends Context.Service<
 
     readonly listOpenPullRequests: (input: {
       readonly cwd: string;
+      readonly repository?: string;
       readonly headSelector: string;
       readonly limit?: number;
     }) => Effect.Effect<ReadonlyArray<GitHubPullRequestSummary>, GitHubCliError>;
 
     readonly getPullRequest: (input: {
       readonly cwd: string;
+      readonly repository?: string;
       readonly reference: string;
     }) => Effect.Effect<GitHubPullRequestSummary, GitHubCliError>;
 
@@ -290,6 +292,7 @@ export class GitHubCli extends Context.Service<
 
     readonly createPullRequest: (input: {
       readonly cwd: string;
+      readonly repository?: string;
       readonly baseBranch: string;
       readonly headSelector: string;
       readonly title: string;
@@ -298,10 +301,12 @@ export class GitHubCli extends Context.Service<
 
     readonly getDefaultBranch: (input: {
       readonly cwd: string;
+      readonly repository?: string;
     }) => Effect.Effect<string | null, GitHubCliError>;
 
     readonly checkoutPullRequest: (input: {
       readonly cwd: string;
+      readonly repository?: string;
       readonly reference: string;
       readonly force?: boolean;
     }) => Effect.Effect<void, GitHubCliError>;
@@ -397,6 +402,7 @@ export const make = Effect.gen(function* () {
           String(input.limit ?? 1),
           "--json",
           "number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,closedAt,isCrossRepository,headRepository,headRepositoryOwner",
+          ...(input.repository ? ["--repo", input.repository] : []),
         ],
       }).pipe(
         Effect.map((result) => result.stdout.trim()),
@@ -429,6 +435,7 @@ export const make = Effect.gen(function* () {
           input.reference,
           "--json",
           "number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,closedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
+          ...(input.repository ? ["--repo", input.repository] : []),
         ],
       }).pipe(
         Effect.map((result) => result.stdout.trim()),
@@ -493,12 +500,21 @@ export const make = Effect.gen(function* () {
           input.title,
           "--body-file",
           input.bodyFile,
+          ...(input.repository ? ["--repo", input.repository] : []),
         ],
       }).pipe(Effect.asVoid),
     getDefaultBranch: (input) =>
       execute({
         cwd: input.cwd,
-        args: ["repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"],
+        args: [
+          "repo",
+          "view",
+          ...(input.repository ? [input.repository] : []),
+          "--json",
+          "defaultBranchRef",
+          "--jq",
+          ".defaultBranchRef.name",
+        ],
       }).pipe(
         Effect.map((value) => {
           const trimmed = value.stdout.trim();
@@ -508,7 +524,13 @@ export const make = Effect.gen(function* () {
     checkoutPullRequest: (input) =>
       execute({
         cwd: input.cwd,
-        args: ["pr", "checkout", input.reference, ...(input.force ? ["--force"] : [])],
+        args: [
+          "pr",
+          "checkout",
+          input.reference,
+          ...(input.repository ? ["--repo", input.repository] : []),
+          ...(input.force ? ["--force"] : []),
+        ],
       }).pipe(Effect.asVoid),
   });
 });

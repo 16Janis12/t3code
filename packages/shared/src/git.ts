@@ -133,7 +133,7 @@ export function normalizeGitRemoteUrl(value: string): string {
     }
   }
 
-  const scpStyleHostAndPath = /^[a-zA-Z0-9._-]+@([^:/\s]+):([^/\s]+(?:\/[^/\s]+)+)$/i.exec(
+  const scpStyleHostAndPath = /^[a-zA-Z0-9._-]+@([^:/\\s]+):([^/\s]+(?:\/[^/\s]+)+)$/i.exec(
     normalized,
   );
   if (scpStyleHostAndPath?.[1] && scpStyleHostAndPath[2]) {
@@ -218,6 +218,23 @@ export function parseGitHubRepositoryNameWithOwnerFromRemoteUrl(url: string | nu
 
   const match =
     /^(?:git@github\.com:|ssh:\/\/(?:git@)?github\.com\/|https:\/\/github\.com\/|git:\/\/github\.com\/)([^/\s]+\/[^/\s]+?)(?:\.git)?\/?$/i.exec(
+      trimmed,
+    );
+  const repositoryNameWithOwner = match?.[1]?.trim() ?? "";
+  return repositoryNameWithOwner.length > 0 ? repositoryNameWithOwner : null;
+}
+
+/**
+ * Best-effort parse of an `owner/repo` identifier from arbitrary git remote URL shapes.
+ */
+export function parseRepositoryNameWithOwnerFromRemoteUrl(url: string | null): string | null {
+  const trimmed = url?.trim() ?? "";
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  const match =
+    /^(?:[^@/\s]+@[^:/\s]+:|(?:ssh|https?|git):\/\/[^/]+\/)((?:[^/\s]+\/)+[^/\s]+?)(?:\.git)?\/?$/iu.exec(
       trimmed,
     );
   const repositoryNameWithOwner = match?.[1]?.trim() ?? "";

@@ -356,6 +356,151 @@ describe("GitHubCli.layer", () => {
     }).pipe(Effect.provide(layer)),
   );
 
+  it.effect("creates pull requests and passes --repo when repository is provided", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(processOutput("https://github.com/owner/repo/pull/1\n")),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      yield* gh.createPullRequest({
+        cwd: "/repo",
+        repository: "owner/repo",
+        baseBranch: "main",
+        headSelector: "owner:feature-branch",
+        title: "Test PR",
+        bodyFile: "/tmp/pr-body.md",
+      });
+
+      expect(mockRun).toHaveBeenCalledWith({
+        operation: "GitHubCli.execute",
+        command: "gh",
+        args: [
+          "pr",
+          "create",
+          "--base",
+          "main",
+          "--head",
+          "owner:feature-branch",
+          "--title",
+          "Test PR",
+          "--body-file",
+          "/tmp/pr-body.md",
+          "--repo",
+          "owner/repo",
+        ],
+        cwd: "/repo",
+        timeoutMs: 30_000,
+      });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("lists open pull requests with --repo when repository is provided", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(Effect.succeed(processOutput("[]")));
+
+      const gh = yield* GitHubCli.GitHubCli;
+      yield* gh.listOpenPullRequests({
+        cwd: "/repo",
+        repository: "owner/repo",
+        headSelector: "feature-branch",
+      });
+
+      expect(mockRun).toHaveBeenCalledWith({
+        operation: "GitHubCli.execute",
+        command: "gh",
+        args: [
+          "pr",
+          "list",
+          "--head",
+          "feature-branch",
+          "--state",
+          "open",
+          "--limit",
+          "1",
+          "--json",
+          "number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,closedAt,isCrossRepository,headRepository,headRepositoryOwner",
+          "--repo",
+          "owner/repo",
+        ],
+        cwd: "/repo",
+        timeoutMs: 30_000,
+      });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("gets pull request with --repo when repository is provided", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              number: 42,
+              title: "Test PR",
+              url: "https://github.com/owner/repo/pull/42",
+              baseRefName: "main",
+              headRefName: "feature-branch",
+              state: "OPEN",
+            }),
+          ),
+        ),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      yield* gh.getPullRequest({
+        cwd: "/repo",
+        repository: "owner/repo",
+        reference: "42",
+      });
+
+      expect(mockRun).toHaveBeenCalledWith({
+        operation: "GitHubCli.execute",
+        command: "gh",
+        args: [
+          "pr",
+          "view",
+          "42",
+          "--json",
+          "number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,closedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
+          "--repo",
+          "owner/repo",
+        ],
+        cwd: "/repo",
+        timeoutMs: 30_000,
+      });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("gets default branch with repository argument", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(Effect.succeed(processOutput("main\n")));
+
+      const gh = yield* GitHubCli.GitHubCli;
+      const defaultBranch = yield* gh.getDefaultBranch({
+        cwd: "/repo",
+        repository: "owner/repo",
+      });
+
+      assert.strictEqual(defaultBranch, "main");
+      expect(mockRun).toHaveBeenCalledWith({
+        operation: "GitHubCli.execute",
+        command: "gh",
+        args: [
+          "repo",
+          "view",
+          "owner/repo",
+          "--json",
+          "defaultBranchRef",
+          "--jq",
+          ".defaultBranchRef.name",
+        ],
+        cwd: "/repo",
+        timeoutMs: 30_000,
+      });
+    }).pipe(Effect.provide(layer)),
+  );
+
   it.effect("surfaces a friendly error when the pull request is not found", () =>
     Effect.gen(function* () {
       const cause = new VcsProcessExitError({

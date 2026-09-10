@@ -184,8 +184,7 @@ it.effect("treats empty non-open change request listing output as no results", (
 
 it.effect("creates GitHub PRs through provider-neutral input names", () =>
   Effect.gen(function* () {
-    let createInput: Parameters<GitHubCli.GitHubCli["Service"]["createPullRequest"]>[0] | null =
-      null;
+    let createInput: { repository?: string } | null = null;
     const provider = yield* makeProvider({
       createPullRequest: (input) => {
         createInput = input;
@@ -208,6 +207,59 @@ it.effect("creates GitHub PRs through provider-neutral input names", () =>
       title: "Provider PR",
       bodyFile: "/tmp/body.md",
     });
+  }),
+);
+
+it.effect("passes target repository to createChangeRequest when specified in target", () =>
+  Effect.gen(function* () {
+    let createInput: { repository?: string } | null = null;
+    const provider = yield* makeProvider({
+      createPullRequest: (input) => {
+        createInput = input;
+        return Effect.void;
+      },
+    });
+
+    yield* provider.createChangeRequest({
+      cwd: "/repo",
+      target: {
+        refName: "main",
+        repository: "16Janis12/t3code",
+      },
+      baseRefName: "main",
+      headSelector: "16Janis12:feature/pr",
+      title: "Provider PR",
+      bodyFile: "/tmp/body.md",
+    });
+
+    assert.strictEqual((createInput as any)?.repository, "16Janis12/t3code");
+  }),
+);
+
+it.effect("derives target repository from context remoteUrl when target omits repository", () =>
+  Effect.gen(function* () {
+    let createInput: { repository?: string } | null = null;
+    const provider = yield* makeProvider({
+      createPullRequest: (input) => {
+        createInput = input;
+        return Effect.void;
+      },
+    });
+
+    yield* provider.createChangeRequest({
+      cwd: "/repo",
+      context: {
+        provider: { kind: "github", name: "GitHub", baseUrl: "https://github.com" },
+        remoteName: "origin",
+        remoteUrl: "git@github.com:16Janis12/t3code.git",
+      },
+      baseRefName: "main",
+      headSelector: "feature/pr",
+      title: "Provider PR",
+      bodyFile: "/tmp/body.md",
+    });
+
+    assert.strictEqual((createInput as any)?.repository, "16Janis12/t3code");
   }),
 );
 

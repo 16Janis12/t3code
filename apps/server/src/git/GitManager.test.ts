@@ -518,6 +518,7 @@ function createGitHubCliWithFakeGh(scenario: FakeGhScenario = {}): {
             String(input.limit ?? 1),
             "--json",
             "number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,closedAt,isCrossRepository,headRepository,headRepositoryOwner",
+            ...(input.repository ? ["--repo", input.repository] : []),
           ],
         }).pipe(
           Effect.map((result) => JSON.parse(result.stdout) as unknown[]),
@@ -541,6 +542,7 @@ function createGitHubCliWithFakeGh(scenario: FakeGhScenario = {}): {
             input.title,
             "--body-file",
             input.bodyFile,
+            ...(input.repository ? ["--repo", input.repository] : []),
           ],
         }).pipe(Effect.asVoid),
       getDefaultBranch: (input) =>
@@ -562,6 +564,7 @@ function createGitHubCliWithFakeGh(scenario: FakeGhScenario = {}): {
             input.reference,
             "--json",
             "number,title,url,baseRefName,headRefName,state,isDraft,mergedAt,closedAt,isCrossRepository,headRepository,headRepositoryOwner",
+            ...(input.repository ? ["--repo", input.repository] : []),
           ],
         }).pipe(
           Effect.map((result) => JSON.parse(result.stdout) as GitHubCli.GitHubPullRequestSummary),
@@ -4201,6 +4204,66 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         ),
       ).toBe(false);
     }),
+  );
+
+  it.effect(
+    "creates PR with --repo matching origin repository when origin is a GitHub remote",
+    () =>
+      Effect.gen(function* () {
+        const repoDir = yield* makeTempDir("t3code-git-manager-");
+        yield* initRepo(repoDir);
+        yield* runGit(repoDir, ["checkout", "-b", "feature-repo-target"]);
+        const remoteDir = yield* createBareRemote();
+        yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+        yield* runGit(repoDir, ["push", "-u", "origin", "feature-repo-target"]);
+        yield* runGit(repoDir, [
+          "config",
+          "remote.origin.url",
+          "git@github.com:my-user/my-repo.git",
+        ]);
+
+        const { manager, ghCalls } = yield* makeManager({
+          ghScenario: {
+            prListSequence: [
+              // @effect-diagnostics-next-line preferSchemaOverJson:off
+              JSON.stringify([]),
+              // @effect-diagnostics-next-line preferSchemaOverJson:off
+              JSON.stringify([
+                {
+                  number: 199,
+                  title: "PR with repo target",
+                  url: "https://github.com/my-user/my-repo/pull/199",
+                  baseRefName: "main",
+                  headRefName: "feature-repo-target",
+                  state: "OPEN",
+                },
+              ]),
+            ],
+          },
+        });
+
+        const result = yield* runStackedAction(manager, {
+          cwd: repoDir,
+          action: "commit_push_pr",
+        });
+
+        expect(result.pr.status).toBe("created");
+        expect(result.pr.number).toBe(199);
+        expect(
+          ghCalls.some(
+            (call) =>
+              call.includes("pr create --base main --head feature-repo-target") &&
+              call.includes("--repo my-user/my-repo"),
+          ),
+        ).toBe(true);
+        expect(
+          ghCalls.some(
+            (call) =>
+              call.includes("pr list --head feature-repo-target") &&
+              call.includes("--repo my-user/my-repo"),
+          ),
+        ).toBe(true);
+      }),
   );
 
   it.effect("rejects push/pr actions from detached HEAD", () =>

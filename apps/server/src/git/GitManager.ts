@@ -210,6 +210,7 @@ interface BranchHeadContext {
   targetRemoteUrlKey: string | null;
   headRepositoryNameWithOwner: string | null;
   headRepositoryOwnerLogin: string | null;
+  targetRepositoryNameWithOwner: string | null;
   isCrossRepository: boolean;
 }
 
@@ -1379,6 +1380,7 @@ export const make = Effect.gen(function* () {
       targetRemoteUrlKey: originRepository.remoteUrlKey,
       headRepositoryNameWithOwner: remoteRepository.repositoryNameWithOwner,
       headRepositoryOwnerLogin: remoteRepository.ownerLogin,
+      targetRepositoryNameWithOwner: originRepository.repositoryNameWithOwner,
       isCrossRepository,
     } satisfies BranchHeadContext;
   });
@@ -1531,6 +1533,7 @@ export const make = Effect.gen(function* () {
       | "headSelectors"
       | "headRepositoryNameWithOwner"
       | "headRepositoryOwnerLogin"
+      | "targetRepositoryNameWithOwner"
       | "isCrossRepository"
     >,
   ) {
@@ -1540,6 +1543,14 @@ export const make = Effect.gen(function* () {
         headSelector,
         state: "open",
         limit: 1,
+        ...(headContext.targetRepositoryNameWithOwner
+          ? {
+              target: {
+                refName: "",
+                repository: headContext.targetRepositoryNameWithOwner,
+              },
+            }
+          : {}),
       });
       const normalizedPullRequests = pullRequests.map(toPullRequestInfo);
 
@@ -1570,6 +1581,14 @@ export const make = Effect.gen(function* () {
         headSelector,
         state: "all",
         limit: 20,
+        ...(headContext.targetRepositoryNameWithOwner
+          ? {
+              target: {
+                refName: "",
+                repository: headContext.targetRepositoryNameWithOwner,
+              },
+            }
+          : {}),
       });
 
       for (const pr of pullRequests.map(toPullRequestInfo)) {
@@ -2000,6 +2019,14 @@ export const make = Effect.gen(function* () {
         cwd,
         baseRefName: baseBranch,
         headSelector: headContext.preferredHeadSelector,
+        ...(headContext.targetRepositoryNameWithOwner
+          ? {
+              target: {
+                refName: baseBranch,
+                repository: headContext.targetRepositoryNameWithOwner,
+              },
+            }
+          : {}),
         title: generated.title,
         bodyFile,
       })
