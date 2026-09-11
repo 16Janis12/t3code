@@ -85,6 +85,62 @@ describe("DesktopUpdates", () => {
     }).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
   });
 
+  it.effect("configures the default GitHub update feed when mock updates are disabled", () => {
+    const harness = makeHarness({
+      env: {
+        T3CODE_DESKTOP_MOCK_UPDATES: "false",
+      },
+    });
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+
+        const state = yield* updates.getState;
+        assert.equal(state.enabled, true);
+        assert.deepEqual(harness.feedUrls(), [
+          {
+            provider: "github",
+            owner: "16Janis12",
+            repo: "t3code",
+            updaterCacheDirName: "t3code-updater",
+          },
+        ]);
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
+  it.effect(
+    "respects T3CODE_DESKTOP_UPDATE_REPOSITORY override when mock updates are disabled",
+    () => {
+      const harness = makeHarness({
+        env: {
+          T3CODE_DESKTOP_MOCK_UPDATES: "false",
+          T3CODE_DESKTOP_UPDATE_REPOSITORY: "custom-owner/custom-repo",
+        },
+      });
+
+      return Effect.scoped(
+        Effect.gen(function* () {
+          const updates = yield* DesktopUpdates.DesktopUpdates;
+          yield* updates.configure;
+
+          const state = yield* updates.getState;
+          assert.equal(state.enabled, true);
+          assert.deepEqual(harness.feedUrls(), [
+            {
+              provider: "github",
+              owner: "custom-owner",
+              repo: "custom-repo",
+              updaterCacheDirName: "t3code-updater",
+            },
+          ]);
+        }),
+      ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+    },
+  );
+
   it.effect("subscribe delivers the latest state plus subsequent changes", () => {
     const harness = makeHarness();
 

@@ -325,6 +325,21 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         releaseType: "prerelease",
         channel: "nightly",
       });
+      const defaultConfig = yield* resolveGitHubPublishConfig("latest").pipe(
+        Effect.provide(
+          ConfigProvider.layer(
+            ConfigProvider.fromEnv({
+              env: {},
+            }),
+          ),
+        ),
+      );
+      assert.deepStrictEqual(defaultConfig, {
+        provider: "github",
+        owner: "16Janis12",
+        repo: "t3code",
+        releaseType: "release",
+      });
     }),
   );
 
