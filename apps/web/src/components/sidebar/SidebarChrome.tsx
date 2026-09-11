@@ -4,6 +4,7 @@ import {
   CircleDotIcon,
   GitPullRequestIcon,
   SettingsIcon,
+  SparklesIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useCallback } from "react";
@@ -154,7 +155,9 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
               ? "pull-requests"
               : location.pathname === "/issues"
                 ? "issues"
-                : null,
+                : location.pathname === "/skills"
+                  ? "skills"
+                  : null,
   });
   const { environments } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -177,6 +180,10 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
       setOpenMobile(false);
     }
   }, [isMobile, setOpenMobile]);
+  const handleSkillsClick = useCallback(() => {
+    closeMobileSidebar();
+    void navigate({ to: "/skills" });
+  }, [closeMobileSidebar, navigate]);
   const handlePullRequestsClick = useCallback(() => {
     closeMobileSidebar();
     void navigate({
@@ -268,6 +275,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             label="Settings"
             onClick={handleSettingsClick}
           />
+          <SidebarUtilityItem icon={<SparklesIcon />} label="Skills" onClick={handleSkillsClick} />
           {pullRequestsSupported ? (
             <SidebarUtilityItem
               icon={<GitPullRequestIcon />}
