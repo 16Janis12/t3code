@@ -2295,11 +2295,14 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           ...(hasMcp
             ? {
                 environment: {
-                  ...(options?.environment ?? process.env),
+                  ...McpProviderSession.withAgentDeviceEnvironment(
+                    options?.environment ?? process.env,
+                    mcpSession,
+                  ),
                   ...codexMcpEnv,
                 },
                 appServerArgs: codexMcpArgs,
-                browserToolsAvailable: mcpSession?.preview ?? false,
+                mcpCapabilities: mcpSession?.capabilities,
               }
             : {}),
         };
