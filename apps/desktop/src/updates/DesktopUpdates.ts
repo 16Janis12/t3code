@@ -46,6 +46,8 @@ import {
   reduceDesktopUpdateStateOnUpdateAvailable,
 } from "./updateMachine.ts";
 
+export const DEFAULT_DESKTOP_UPDATE_REPOSITORY = "16Janis12/t3code";
+
 const AUTO_UPDATE_STARTUP_DELAY = "15 seconds";
 const AUTO_UPDATE_POLL_INTERVAL = "4 minutes";
 const PREPARED_INSTALL_CHECK_WAIT = Duration.seconds(90);
@@ -282,7 +284,26 @@ export const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
 
-  const appUpdateYmlConfigRef = yield* Ref.make<Option.Option<AppUpdateYmlConfig>>(Option.none());
+  const resolveFallbackFeedConfig = (): Option.Option<AppUpdateYmlConfig> => {
+    const rawRepo = Option.getOrElse(
+      config.updateRepositoryOverride,
+      () => DEFAULT_DESKTOP_UPDATE_REPOSITORY,
+    );
+    const [owner, repo] = rawRepo.split("/");
+    if (owner && repo) {
+      return Option.some<AppUpdateYmlConfig>({
+        provider: "github",
+        owner,
+        repo,
+        updaterCacheDirName: "t3code-updater",
+      });
+    }
+    return Option.none<AppUpdateYmlConfig>();
+  };
+
+  const appUpdateYmlConfigRef = yield* Ref.make<Option.Option<AppUpdateYmlConfig>>(
+    resolveFallbackFeedConfig(),
+  );
   const activeUpdateActionRef = yield* Ref.make<Option.Option<UpdateAction>>(Option.none());
   const finishedUpdateActions = yield* PubSub.unbounded<UpdateAction>();
   const updaterConfiguredRef = yield* Ref.make(false);
@@ -867,13 +888,44 @@ export const make = Effect.gen(function* () {
       };
 
       const appUpdateYmlConfig = yield* readAppUpdateYml;
-      yield* Ref.set(appUpdateYmlConfigRef, appUpdateYmlConfig);
+      const effectiveFeedConfig = Option.match(appUpdateYmlConfig, {
+        onNone: resolveFallbackFeedConfig,
+        onSome: (existing) => {
+          if (Option.isSome(config.updateRepositoryOverride)) {
+            const [owner, repo] = config.updateRepositoryOverride.value.split("/");
+            if (owner && repo) {
+              return Option.some<AppUpdateYmlConfig>({
+                ...existing,
+                provider: "github",
+                owner,
+                repo,
+              });
+            }
+          }
+          if (existing.owner === "pingdotgg" && existing.repo === "t3code") {
+            const [owner, repo] = DEFAULT_DESKTOP_UPDATE_REPOSITORY.split("/");
+            if (owner && repo) {
+              return Option.some<AppUpdateYmlConfig>({
+                ...existing,
+                owner,
+                repo,
+              });
+            }
+          }
+          return Option.some(existing);
+        },
+      });
+      yield* Ref.set(appUpdateYmlConfigRef, effectiveFeedConfig);
 
       if (config.mockUpdates) {
         yield* electronUpdater.setFeedURL({
           provider: "generic",
           url: `http://localhost:${config.mockUpdateServerPort}`,
         } as ElectronUpdater.ElectronUpdaterFeedUrl);
+      } else if (Option.isSome(effectiveFeedConfig)) {
+        yield* electronUpdater.setFeedURL(
+          effectiveFeedConfig.value as unknown as ElectronUpdater.ElectronUpdaterFeedUrl,
+        );
       }
 
       const settings = yield* desktopSettings.get;

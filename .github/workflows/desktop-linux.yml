@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Release tag name (default: desktop-latest)"
+        description: "Release tag name (e.g. v0.0.41). Leave blank for auto-versioned release."
         required: false
-        default: "desktop-latest"
+        default: ""
         type: string
 
 concurrency:
@@ -22,8 +22,77 @@ permissions:
   contents: write
 
 jobs:
+  meta:
+    name: Resolve Release Version & Tag
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      title: ${{ steps.version.outputs.title }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+      make_latest: ${{ steps.version.outputs.make_latest }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine version and release tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_VERSION="$(node -p 'require("./apps/desktop/package.json").version.replace(/[-+].*$/, "")')"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
+          NEXT_PATCH="$((PATCH + 1))"
+          NEXT_BASE="${MAJOR}.${MINOR}.${NEXT_PATCH}"
+
+          INPUT_TAG="${{ inputs.tag_name }}"
+          if [[ -n "$INPUT_TAG" ]]; then
+            TAG="$INPUT_TAG"
+            [[ "$TAG" =~ ^v ]] || TAG="v$TAG"
+            VERSION="${TAG#v}"
+            TITLE="T3 Code Desktop ${TAG}"
+            if [[ "$VERSION" =~ - ]]; then
+              IS_PRERELEASE="true"
+              MAKE_LATEST="false"
+            else
+              IS_PRERELEASE="false"
+              MAKE_LATEST="true"
+            fi
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            VERSION="${TAG#v}"
+            TITLE="T3 Code Desktop ${TAG}"
+            if [[ "$VERSION" =~ - ]]; then
+              IS_PRERELEASE="true"
+              MAKE_LATEST="false"
+            else
+              IS_PRERELEASE="false"
+              MAKE_LATEST="true"
+            fi
+          else
+            DATE_STAMP="$(date -u +%Y%m%d)"
+            VERSION="${NEXT_BASE}-main.${DATE_STAMP}.${{ github.run_number }}"
+            TAG="v${VERSION}"
+            TITLE="T3 Code Desktop ${TAG}"
+            IS_PRERELEASE="false"
+            MAKE_LATEST="true"
+          fi
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=${IS_PRERELEASE}" >> "$GITHUB_OUTPUT"
+          echo "make_latest=${MAKE_LATEST}" >> "$GITHUB_OUTPUT"
+
+          echo "Resolved version: ${VERSION}"
+          echo "Resolved tag: ${TAG}"
+          echo "Resolved title: ${TITLE}"
+          echo "Is prerelease: ${IS_PRERELEASE}"
+          echo "Make latest: ${MAKE_LATEST}"
+
   build:
     name: Build Linux AppImage (${{ matrix.arch }})
+    needs: [meta]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
     strategy:
@@ -88,36 +157,39 @@ jobs:
 
       - name: Build Desktop AppImage
         shell: bash
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           node scripts/build-desktop-artifact.ts \
             --platform linux \
             --target AppImage \
             --arch ${{ matrix.arch }} \
+            --build-version "${{ needs.meta.outputs.version }}" \
             --verbose
 
-      - name: Collect AppImage output
+      - name: Collect build artifacts
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifacts
           shopt -s nullglob
-          for f in release/*.AppImage; do
-            echo "Found AppImage: $f"
+          for f in release/*.AppImage release/*.blockmap release/*.yml; do
+            echo "Found artifact: $f"
             cp "$f" artifacts/
           done
           ls -la artifacts/
 
-      - name: Upload AppImage artifact
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: appimage-${{ matrix.arch }}
-          path: artifacts/*.AppImage
+          name: artifacts-${{ matrix.arch }}
+          path: artifacts/*
           if-no-files-found: error
 
   release:
     name: Publish AppImage to GitHub Releases
-    needs: [build]
+    needs: [meta, build]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -125,42 +197,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download all AppImage artifacts
+      - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: appimage-*
-          path: appimages-merged
+          pattern: artifacts-*
+          path: release-artifacts
           merge-multiple: true
 
-      - name: List downloaded AppImages
+      - name: List downloaded artifacts
         shell: bash
         run: |
-          ls -lh appimages-merged/
+          ls -lh release-artifacts/
 
-      - name: Determine release tag
-        id: release_meta
-        shell: bash
-        run: |
-          if [[ -n "${{ inputs.tag_name }}" ]]; then
-            TAG="${{ inputs.tag_name }}"
-            TITLE="T3 Code Desktop ${TAG}"
-          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            TAG="${GITHUB_REF#refs/tags/}"
-            TITLE="T3 Code Desktop ${TAG}"
-          else
-            TAG="desktop-latest"
-            TITLE="T3 Code Desktop (Latest)"
-          fi
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
-
-      - name: Create or Update GitHub Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ steps.release_meta.outputs.tag }}
-          name: ${{ steps.release_meta.outputs.title }}
-          prerelease: false
-          files: appimages-merged/*.AppImage
+          tag_name: ${{ needs.meta.outputs.tag }}
+          name: ${{ needs.meta.outputs.title }}
+          prerelease: ${{ needs.meta.outputs.is_prerelease == 'true' }}
+          make_latest: ${{ needs.meta.outputs.make_latest }}
+          files: release-artifacts/*
           generate_release_notes: true
